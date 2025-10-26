@@ -1,0 +1,24 @@
+# ---------- STAGE: Development ----------
+FROM golang:1.25-alpine
+
+WORKDIR /app
+
+# Install tools: git, curl, bash, build-base, air, swag, syft
+RUN apk add --no-cache git curl bash build-base ca-certificates \
+    && go install github.com/air-verse/air@latest \
+    && go install github.com/swaggo/swag/cmd/swag@latest 
+
+# Copy go.mod and go.sum first (better caching)
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy all source code
+COPY . .
+
+# Generate Swagger docs
+RUN swag init -g cmd/main.go -o docs
+
+EXPOSE 8003
+
+# Run Air for hot reload
+CMD ["air", "-c", ".air.toml"]
