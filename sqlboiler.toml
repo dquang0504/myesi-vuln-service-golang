@@ -1,0 +1,13 @@
+[psql]
+    dbname = "myesi_db"
+    host = "localhost"
+    port = 5432
+    user = "myesi"
+    pass = "123456789"
+    sslmode = "disable"
+    schema = "public"
+    blacklist = ["schema_migrations"]
+
+    # output folder
+    output = "internal/models"
+    pkgname = "models"
