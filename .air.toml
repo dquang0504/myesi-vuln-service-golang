@@ -1,0 +1,19 @@
+# Air configuration for Go hot reload
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o ./tmp/vulnerability-service ./cmd/main.go"
+bin = "tmp/vulnerability-service"
+full_bin = "tmp/vulnerability-service"
+include_ext = ["go", "tpl", "tmpl", "html"]
+exclude_dir = ["vendor", "tmp", "internal/models"]
+delay = 1000
+stop_on_error = true
+
+[log]
+color = true
+timestamp = true
+
+[misc]
+clean_on_exit = true

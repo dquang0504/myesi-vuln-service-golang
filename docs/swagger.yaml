@@ -1,0 +1,101 @@
+basePath: /api/vuln
+definitions:
+  v1.RefreshRequest:
+    properties:
+      components:
+        items:
+          additionalProperties:
+            type: string
+          type: object
+        type: array
+      project_name:
+        type: string
+      sbom_id:
+        type: string
+    type: object
+host: localhost:8003
+info:
+  contact: {}
+  description: API for managing vulnerabilities from SBOM.
+  title: MyESI Vulnerability Service API
+  version: "1.0"
+paths:
+  /{sbom_id}:
+    get:
+      description: Returns all vulnerabilities stored for a given SBOM
+      parameters:
+      - description: SBOM ID
+        in: path
+        name: sbom_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get vulnerabilities by SBOM ID
+      tags:
+      - vulnerability
+  /health:
+    get:
+      description: Check if vuln service is alive
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: ok
+          schema:
+            type: string
+      summary: Health check
+      tags:
+      - health
+  /refresh:
+    post:
+      consumes:
+      - application/json
+      description: Trigger vulnerability scan / refresh via Kafka
+      parameters:
+      - description: Refresh request body
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/v1.RefreshRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Refresh vulnerabilities
+      tags:
+      - vulnerability
+swagger: "2.0"
