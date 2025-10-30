@@ -15,8 +15,10 @@ import (
 func RegisterVulnRoutes(app *fiber.App) {
 	r := app.Group("/api/vuln")
 	r.Get("/health", HealthCheck)
-	r.Get("/:sbom_id", getVulnsBySBOM) //getVulnsBySBOM returns stored vulnerabilities for an sbom_id
 	r.Post("/refresh", refreshVuln)    //refreshVuln triggers a re-scan: either publish a Kafka event or run inline
+	r.Get("/stream", utils.StreamVulnerabilities)
+	r.Get("/:sbom_id", getVulnsBySBOM) //getVulnsBySBOM returns stored vulnerabilities for an sbom_id
+	
 }
 
 // @Summary Health check
@@ -98,3 +100,5 @@ func refreshVuln(c *fiber.Ctx) error {
 	}
 	return c.JSON(fiber.Map{"message": "refresh queued"})
 }
+
+
