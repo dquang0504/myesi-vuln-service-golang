@@ -568,7 +568,7 @@ func testVulnerabilitiesSelect(t *testing.T) {
 }
 
 var (
-	vulnerabilityDBTypes = map[string]string{`ID`: `bigint`, `SbomID`: `uuid`, `ProjectName`: `text`, `ComponentName`: `text`, `ComponentVersion`: `text`, `VulnID`: `text`, `Severity`: `text`, `OsvMetadata`: `jsonb`, `CreatedAt`: `timestamp with time zone`, `UpdatedAt`: `timestamp with time zone`}
+	vulnerabilityDBTypes = map[string]string{`ID`: `bigint`, `SbomID`: `uuid`, `ProjectName`: `text`, `ComponentName`: `text`, `ComponentVersion`: `text`, `VulnID`: `text`, `Severity`: `text`, `OsvMetadata`: `jsonb`, `CVSSVector`: `character varying`, `SbomComponentCount`: `integer`, `SbomHash`: `text`, `CreatedAt`: `timestamp with time zone`, `UpdatedAt`: `timestamp with time zone`}
 	_                    = bytes.MinRead
 )
 

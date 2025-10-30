@@ -12,6 +12,7 @@ import (
 	"myesi-vuln-service-golang/internal/redis"
 	"myesi-vuln-service-golang/internal/services"
 	"myesi-vuln-service-golang/models"
+	"myesi-vuln-service-golang/utils"
 	"strings"
 	"time"
 
@@ -146,25 +147,25 @@ func processEvent(evt SBOMEvent, db *sql.DB) error {
 		return nil
 	}
 
-	// ✅ Generate stable hash of component list
+	// Generate stable hash of component list
 	compBytes, _ := json.Marshal(evt.Components)
 	hash := sha256.Sum256(compBytes)
 	hashStr := hex.EncodeToString(hash[:])
 	cacheKey := fmt.Sprintf(redisHashKey, evt.SBOMID)
 
-	// 🔍 Check cache
+	// Check cache
 	cachedHash, err := redis.Client.Get(ctx, cacheKey).Result()
 	if err == nil && cachedHash == hashStr {
 		log.Printf("[Cache] SBOM %s unchanged (hash=%s), skipping reprocess", evt.SBOMID, hashStr[:10])
 		return nil
 	}
 
-	// ❌ Delete all old vulnerabilities for this SBOM
+	// Delete all old vulnerabilities for this SBOM
 	if _, err := db.ExecContext(ctx, "DELETE FROM vulnerabilities WHERE sbom_id=$1", evt.SBOMID); err != nil {
 		return fmt.Errorf("failed to clear old vulnerabilities: %w", err)
 	}
 
-	// 🧠 Query OSV for each component (parallelized)
+	// Query OSV for each component (parallelized)
 	osvRecords := make([]config.OSVRecord, 0, len(evt.Components))
 	for _, c := range evt.Components {
 		name := c["name"]
@@ -209,7 +210,7 @@ func processEvent(evt SBOMEvent, db *sql.DB) error {
 		}(comp)
 	}
 
-	// 🧩 Insert new vulnerabilities
+	// Insert new vulnerabilities
 	for i := 0; i < len(osvRecords); i++ {
 		item := <-resultsCh
 		if item.Err != nil {
@@ -228,9 +229,54 @@ func processEvent(evt SBOMEvent, db *sql.DB) error {
 			if arr, _ := vsRaw.([]interface{}); len(arr) > 0 {
 				if first, ok := arr[0].(map[string]interface{}); ok {
 					vulnID = interfaceToStringPtr(first["id"])
-					severity = interfaceToStringPtr(first["severity"])
+					
+					// --- fallback severity ---
+					var sev *string
+					// 1. cvss vector
+					if cvssRaw, ok := first["cvss"]; ok {
+						if cvssArr, _ := cvssRaw.([]interface{}); len(cvssArr) > 0 {
+							if cvss0, ok := cvssArr[0].(map[string]interface{}); ok {
+								if score, ok := cvss0["score"].(string); ok {
+									sev = &score
+								}
+							}
+						}
+					}
+					// 2. database_specific.severity
+					if sev == nil {
+						if dbSpec, ok := first["database_specific"].(map[string]interface{}); ok {
+							if s, ok := dbSpec["severity"].(string); ok {
+								sev = &s
+							}
+						}
+					}
+					severity = sev
+					
 				}
 			}
+		}
+
+		if vulnID == nil {
+			// none := "none"
+			// v := models.Vulnerability{... Severity: null.StringFrom(none) ...}
+			// _ = v.Insert(ctx, db, boil.Infer())
+			continue
+		}
+
+		sevLabel := "unknown"
+		var cvssVector *string
+
+		if severity != nil && *severity != "" {
+			sevLabel = *severity
+		} else {
+			if s, vec, err := services.FetchSeverity(ctx, *vulnID); err == nil {
+				sevLabel = s
+				cvssVector = vec
+			}
+		}
+
+		if strings.HasPrefix(*vulnID, "MAL"){
+			sevLabel = "critical"
 		}
 
 		v := models.Vulnerability{
@@ -239,16 +285,29 @@ func processEvent(evt SBOMEvent, db *sql.DB) error {
 			ComponentName:    item.Comp.Package.Name,
 			ComponentVersion: item.Comp.Version,
 			VulnID:           null.StringFromPtr(vulnID),
-			Severity:         null.StringFromPtr(severity),
+			Severity:         null.StringFromPtr(&sevLabel),
 			OsvMetadata:      null.JSONFrom(metaBytes),
+			CVSSVector: 	  null.StringFromPtr(cvssVector),	
 		}
 
-		if err := v.Insert(ctx, db, boil.Infer()); err != nil {
+		if err := v.Insert(ctx, db, boil.Infer()); err == nil {
+			// push realtime for frontend
+			utils.PublishVulnRealtime(evt.Project, map[string]interface{}{
+				"cve":       vulnID,
+				"component": item.Comp.Package.Name,
+				"version":   item.Comp.Version,
+				"severity":  sevLabel,
+				"project":   evt.Project,
+				"osv_meta":  metaBytes,
+			})
+
+		} else {
 			log.Printf("[VulnService] Insert vuln failed for %s: %v", item.Comp.Package.Name, err)
 		}
+
 	}
 
-	// ✅ Update cache
+	// Update cache
 	redis.Client.Set(ctx, cacheKey, hashStr, cacheTTL)
 	redis.Client.Set(ctx, fmt.Sprintf("sbom:%s:count", evt.SBOMID), len(evt.Components), cacheTTL)
 
