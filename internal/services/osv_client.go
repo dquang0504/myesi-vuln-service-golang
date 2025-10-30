@@ -9,14 +9,12 @@ import (
 	"log"
 	"myesi-vuln-service-golang/internal/config"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 )
 
 var OSVURL = config.LoadConfig().OSVURL
-
-type queryPackage struct {
-	Package map[string]string `json:"package"`
-}
 
 // QueryOSVBatch sends record(s) of components (package name + version) to OSV API to fetch
 // vulnerabilities if found any
@@ -101,3 +99,86 @@ func QueryOSVBatch(ctx context.Context, comps []config.OSVRecord) ([]map[string]
 
 	return results, nil
 }
+
+func CvssToSeverity(score float64) string {
+	switch {
+	case score >= 9.0:
+		return "critical"
+	case score >= 7.0:
+		return "high"
+	case score >= 4.0:
+		return "medium"
+	case score > 0.0:
+		return "low"
+	default:
+		return "none"
+	}
+}
+
+// FetchSeverity fetches vulnerability details from OSV API,
+// returning both normalized severity label (low/medium/high/critical)
+// and optional CVSS vector string if available.
+func FetchSeverity(ctx context.Context, vulnID string) (string, *string, error) {
+	url := fmt.Sprintf("https://api.osv.dev/v1/vulns/%s", vulnID)
+	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "unknown", nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "unknown", nil, fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var data map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return "unknown", nil, fmt.Errorf("decode error: %w", err)
+	}
+
+	var (
+		label      = "unknown"
+		cvssVector *string
+	)
+
+	// --- Parse severity array ---
+	if sevRaw, ok := data["severity"]; ok {
+		if arr, ok := sevRaw.([]interface{}); ok {
+			for _, item := range arr {
+				if m, ok := item.(map[string]interface{}); ok {
+					// (1) numeric CVSS score → derive severity level
+					if s, ok := m["score"].(string); ok {
+						if f, err := strconv.ParseFloat(s, 64); err == nil {
+							label = CvssToSeverity(f)
+						} else if strings.HasPrefix(s, "CVSS:") {
+							// (2) vector string, e.g. CVSS:3.1/AV:N/AC:H/...
+							cvssVector = &s
+						}
+					}
+
+					// (3) capture vector string even if already parsed numeric
+					if t, ok := m["type"].(string); ok && strings.HasPrefix(t, "CVSS") {
+						if s, ok := m["score"].(string); ok && strings.HasPrefix(s, "CVSS:") {
+							cvssVector = &s
+						}
+					}
+				}
+			}
+		} else if s, ok := sevRaw.(string); ok {
+			label = strings.ToLower(s)
+		}
+	}
+
+	// --- fallback: database_specific.severity ---
+	if label == "unknown" {
+		if ds, ok := data["database_specific"].(map[string]interface{}); ok {
+			if s, ok := ds["severity"].(string); ok {
+				label = strings.ToLower(s)
+			}
+		}
+	}
+
+	return label, cvssVector, nil
+}
+

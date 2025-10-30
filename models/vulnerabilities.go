@@ -24,67 +24,82 @@ import (
 
 // Vulnerability is an object representing the database table.
 type Vulnerability struct {
-	ID               int64       `boil:"id" json:"id" toml:"id" yaml:"id"`
-	SbomID           string      `boil:"sbom_id" json:"sbom_id" toml:"sbom_id" yaml:"sbom_id"`
-	ProjectName      null.String `boil:"project_name" json:"project_name,omitempty" toml:"project_name" yaml:"project_name,omitempty"`
-	ComponentName    string      `boil:"component_name" json:"component_name" toml:"component_name" yaml:"component_name"`
-	ComponentVersion string      `boil:"component_version" json:"component_version" toml:"component_version" yaml:"component_version"`
-	VulnID           null.String `boil:"vuln_id" json:"vuln_id,omitempty" toml:"vuln_id" yaml:"vuln_id,omitempty"`
-	Severity         null.String `boil:"severity" json:"severity,omitempty" toml:"severity" yaml:"severity,omitempty"`
-	OsvMetadata      null.JSON   `boil:"osv_metadata" json:"osv_metadata,omitempty" toml:"osv_metadata" yaml:"osv_metadata,omitempty"`
-	CreatedAt        null.Time   `boil:"created_at" json:"created_at,omitempty" toml:"created_at" yaml:"created_at,omitempty"`
-	UpdatedAt        null.Time   `boil:"updated_at" json:"updated_at,omitempty" toml:"updated_at" yaml:"updated_at,omitempty"`
+	ID                 int64       `boil:"id" json:"id" toml:"id" yaml:"id"`
+	SbomID             string      `boil:"sbom_id" json:"sbom_id" toml:"sbom_id" yaml:"sbom_id"`
+	ProjectName        null.String `boil:"project_name" json:"project_name,omitempty" toml:"project_name" yaml:"project_name,omitempty"`
+	ComponentName      string      `boil:"component_name" json:"component_name" toml:"component_name" yaml:"component_name"`
+	ComponentVersion   string      `boil:"component_version" json:"component_version" toml:"component_version" yaml:"component_version"`
+	VulnID             null.String `boil:"vuln_id" json:"vuln_id,omitempty" toml:"vuln_id" yaml:"vuln_id,omitempty"`
+	Severity           null.String `boil:"severity" json:"severity,omitempty" toml:"severity" yaml:"severity,omitempty"`
+	OsvMetadata        null.JSON   `boil:"osv_metadata" json:"osv_metadata,omitempty" toml:"osv_metadata" yaml:"osv_metadata,omitempty"`
+	CVSSVector         null.String `boil:"cvss_vector" json:"cvss_vector,omitempty" toml:"cvss_vector" yaml:"cvss_vector,omitempty"`
+	SbomComponentCount null.Int    `boil:"sbom_component_count" json:"sbom_component_count,omitempty" toml:"sbom_component_count" yaml:"sbom_component_count,omitempty"`
+	SbomHash           null.String `boil:"sbom_hash" json:"sbom_hash,omitempty" toml:"sbom_hash" yaml:"sbom_hash,omitempty"`
+	CreatedAt          null.Time   `boil:"created_at" json:"created_at,omitempty" toml:"created_at" yaml:"created_at,omitempty"`
+	UpdatedAt          null.Time   `boil:"updated_at" json:"updated_at,omitempty" toml:"updated_at" yaml:"updated_at,omitempty"`
 
 	R *vulnerabilityR `boil:"-" json:"-" toml:"-" yaml:"-"`
 	L vulnerabilityL  `boil:"-" json:"-" toml:"-" yaml:"-"`
 }
 
 var VulnerabilityColumns = struct {
-	ID               string
-	SbomID           string
-	ProjectName      string
-	ComponentName    string
-	ComponentVersion string
-	VulnID           string
-	Severity         string
-	OsvMetadata      string
-	CreatedAt        string
-	UpdatedAt        string
+	ID                 string
+	SbomID             string
+	ProjectName        string
+	ComponentName      string
+	ComponentVersion   string
+	VulnID             string
+	Severity           string
+	OsvMetadata        string
+	CVSSVector         string
+	SbomComponentCount string
+	SbomHash           string
+	CreatedAt          string
+	UpdatedAt          string
 }{
-	ID:               "id",
-	SbomID:           "sbom_id",
-	ProjectName:      "project_name",
-	ComponentName:    "component_name",
-	ComponentVersion: "component_version",
-	VulnID:           "vuln_id",
-	Severity:         "severity",
-	OsvMetadata:      "osv_metadata",
-	CreatedAt:        "created_at",
-	UpdatedAt:        "updated_at",
+	ID:                 "id",
+	SbomID:             "sbom_id",
+	ProjectName:        "project_name",
+	ComponentName:      "component_name",
+	ComponentVersion:   "component_version",
+	VulnID:             "vuln_id",
+	Severity:           "severity",
+	OsvMetadata:        "osv_metadata",
+	CVSSVector:         "cvss_vector",
+	SbomComponentCount: "sbom_component_count",
+	SbomHash:           "sbom_hash",
+	CreatedAt:          "created_at",
+	UpdatedAt:          "updated_at",
 }
 
 var VulnerabilityTableColumns = struct {
-	ID               string
-	SbomID           string
-	ProjectName      string
-	ComponentName    string
-	ComponentVersion string
-	VulnID           string
-	Severity         string
-	OsvMetadata      string
-	CreatedAt        string
-	UpdatedAt        string
+	ID                 string
+	SbomID             string
+	ProjectName        string
+	ComponentName      string
+	ComponentVersion   string
+	VulnID             string
+	Severity           string
+	OsvMetadata        string
+	CVSSVector         string
+	SbomComponentCount string
+	SbomHash           string
+	CreatedAt          string
+	UpdatedAt          string
 }{
-	ID:               "vulnerabilities.id",
-	SbomID:           "vulnerabilities.sbom_id",
-	ProjectName:      "vulnerabilities.project_name",
-	ComponentName:    "vulnerabilities.component_name",
-	ComponentVersion: "vulnerabilities.component_version",
-	VulnID:           "vulnerabilities.vuln_id",
-	Severity:         "vulnerabilities.severity",
-	OsvMetadata:      "vulnerabilities.osv_metadata",
-	CreatedAt:        "vulnerabilities.created_at",
-	UpdatedAt:        "vulnerabilities.updated_at",
+	ID:                 "vulnerabilities.id",
+	SbomID:             "vulnerabilities.sbom_id",
+	ProjectName:        "vulnerabilities.project_name",
+	ComponentName:      "vulnerabilities.component_name",
+	ComponentVersion:   "vulnerabilities.component_version",
+	VulnID:             "vulnerabilities.vuln_id",
+	Severity:           "vulnerabilities.severity",
+	OsvMetadata:        "vulnerabilities.osv_metadata",
+	CVSSVector:         "vulnerabilities.cvss_vector",
+	SbomComponentCount: "vulnerabilities.sbom_component_count",
+	SbomHash:           "vulnerabilities.sbom_hash",
+	CreatedAt:          "vulnerabilities.created_at",
+	UpdatedAt:          "vulnerabilities.updated_at",
 }
 
 // Generated where
@@ -112,28 +127,72 @@ func (w whereHelperint64) NIN(slice []int64) qm.QueryMod {
 	return qm.WhereNotIn(fmt.Sprintf("%s NOT IN ?", w.field), values...)
 }
 
+type whereHelpernull_Int struct{ field string }
+
+func (w whereHelpernull_Int) EQ(x null.Int) qm.QueryMod {
+	return qmhelper.WhereNullEQ(w.field, false, x)
+}
+func (w whereHelpernull_Int) NEQ(x null.Int) qm.QueryMod {
+	return qmhelper.WhereNullEQ(w.field, true, x)
+}
+func (w whereHelpernull_Int) LT(x null.Int) qm.QueryMod {
+	return qmhelper.Where(w.field, qmhelper.LT, x)
+}
+func (w whereHelpernull_Int) LTE(x null.Int) qm.QueryMod {
+	return qmhelper.Where(w.field, qmhelper.LTE, x)
+}
+func (w whereHelpernull_Int) GT(x null.Int) qm.QueryMod {
+	return qmhelper.Where(w.field, qmhelper.GT, x)
+}
+func (w whereHelpernull_Int) GTE(x null.Int) qm.QueryMod {
+	return qmhelper.Where(w.field, qmhelper.GTE, x)
+}
+func (w whereHelpernull_Int) IN(slice []int) qm.QueryMod {
+	values := make([]interface{}, 0, len(slice))
+	for _, value := range slice {
+		values = append(values, value)
+	}
+	return qm.WhereIn(fmt.Sprintf("%s IN ?", w.field), values...)
+}
+func (w whereHelpernull_Int) NIN(slice []int) qm.QueryMod {
+	values := make([]interface{}, 0, len(slice))
+	for _, value := range slice {
+		values = append(values, value)
+	}
+	return qm.WhereNotIn(fmt.Sprintf("%s NOT IN ?", w.field), values...)
+}
+
+func (w whereHelpernull_Int) IsNull() qm.QueryMod    { return qmhelper.WhereIsNull(w.field) }
+func (w whereHelpernull_Int) IsNotNull() qm.QueryMod { return qmhelper.WhereIsNotNull(w.field) }
+
 var VulnerabilityWhere = struct {
-	ID               whereHelperint64
-	SbomID           whereHelperstring
-	ProjectName      whereHelpernull_String
-	ComponentName    whereHelperstring
-	ComponentVersion whereHelperstring
-	VulnID           whereHelpernull_String
-	Severity         whereHelpernull_String
-	OsvMetadata      whereHelpernull_JSON
-	CreatedAt        whereHelpernull_Time
-	UpdatedAt        whereHelpernull_Time
+	ID                 whereHelperint64
+	SbomID             whereHelperstring
+	ProjectName        whereHelpernull_String
+	ComponentName      whereHelperstring
+	ComponentVersion   whereHelperstring
+	VulnID             whereHelpernull_String
+	Severity           whereHelpernull_String
+	OsvMetadata        whereHelpernull_JSON
+	CVSSVector         whereHelpernull_String
+	SbomComponentCount whereHelpernull_Int
+	SbomHash           whereHelpernull_String
+	CreatedAt          whereHelpernull_Time
+	UpdatedAt          whereHelpernull_Time
 }{
-	ID:               whereHelperint64{field: "\"vulnerabilities\".\"id\""},
-	SbomID:           whereHelperstring{field: "\"vulnerabilities\".\"sbom_id\""},
-	ProjectName:      whereHelpernull_String{field: "\"vulnerabilities\".\"project_name\""},
-	ComponentName:    whereHelperstring{field: "\"vulnerabilities\".\"component_name\""},
-	ComponentVersion: whereHelperstring{field: "\"vulnerabilities\".\"component_version\""},
-	VulnID:           whereHelpernull_String{field: "\"vulnerabilities\".\"vuln_id\""},
-	Severity:         whereHelpernull_String{field: "\"vulnerabilities\".\"severity\""},
-	OsvMetadata:      whereHelpernull_JSON{field: "\"vulnerabilities\".\"osv_metadata\""},
-	CreatedAt:        whereHelpernull_Time{field: "\"vulnerabilities\".\"created_at\""},
-	UpdatedAt:        whereHelpernull_Time{field: "\"vulnerabilities\".\"updated_at\""},
+	ID:                 whereHelperint64{field: "\"vulnerabilities\".\"id\""},
+	SbomID:             whereHelperstring{field: "\"vulnerabilities\".\"sbom_id\""},
+	ProjectName:        whereHelpernull_String{field: "\"vulnerabilities\".\"project_name\""},
+	ComponentName:      whereHelperstring{field: "\"vulnerabilities\".\"component_name\""},
+	ComponentVersion:   whereHelperstring{field: "\"vulnerabilities\".\"component_version\""},
+	VulnID:             whereHelpernull_String{field: "\"vulnerabilities\".\"vuln_id\""},
+	Severity:           whereHelpernull_String{field: "\"vulnerabilities\".\"severity\""},
+	OsvMetadata:        whereHelpernull_JSON{field: "\"vulnerabilities\".\"osv_metadata\""},
+	CVSSVector:         whereHelpernull_String{field: "\"vulnerabilities\".\"cvss_vector\""},
+	SbomComponentCount: whereHelpernull_Int{field: "\"vulnerabilities\".\"sbom_component_count\""},
+	SbomHash:           whereHelpernull_String{field: "\"vulnerabilities\".\"sbom_hash\""},
+	CreatedAt:          whereHelpernull_Time{field: "\"vulnerabilities\".\"created_at\""},
+	UpdatedAt:          whereHelpernull_Time{field: "\"vulnerabilities\".\"updated_at\""},
 }
 
 // VulnerabilityRels is where relationship names are stored.
@@ -153,9 +212,9 @@ func (*vulnerabilityR) NewStruct() *vulnerabilityR {
 type vulnerabilityL struct{}
 
 var (
-	vulnerabilityAllColumns            = []string{"id", "sbom_id", "project_name", "component_name", "component_version", "vuln_id", "severity", "osv_metadata", "created_at", "updated_at"}
+	vulnerabilityAllColumns            = []string{"id", "sbom_id", "project_name", "component_name", "component_version", "vuln_id", "severity", "osv_metadata", "cvss_vector", "sbom_component_count", "sbom_hash", "created_at", "updated_at"}
 	vulnerabilityColumnsWithoutDefault = []string{"sbom_id", "component_name", "component_version"}
-	vulnerabilityColumnsWithDefault    = []string{"id", "project_name", "vuln_id", "severity", "osv_metadata", "created_at", "updated_at"}
+	vulnerabilityColumnsWithDefault    = []string{"id", "project_name", "vuln_id", "severity", "osv_metadata", "cvss_vector", "sbom_component_count", "sbom_hash", "created_at", "updated_at"}
 	vulnerabilityPrimaryKeyColumns     = []string{"id"}
 	vulnerabilityGeneratedColumns      = []string{}
 )
