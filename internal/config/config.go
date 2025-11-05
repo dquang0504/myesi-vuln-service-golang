@@ -5,17 +5,20 @@ import (
 	"os"
 
 	"github.com/joho/godotenv"
+	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
-	RedisURL      string
-	KafkaBroker   string
-	KafkaTopic    string
-	DLQTopic      string
-	DatabaseURL   string
-	OSVURL        string
-	ConsumerGroup string
-	Port          string
+	RedisURL            string
+	KafkaBroker         string
+	KafkaTopic          string
+	DLQTopic            string
+	DatabaseURL         string
+	OSVURL              string
+	ConsumerGroup       string
+	Port                string
+	SchedulerSpec       string `yaml:"scheduler_spec"`
+	SchedulerBatchLimit int    `yaml:"scheduler_batch_limit"`
 }
 
 func LoadConfig() *Config {
@@ -29,6 +32,28 @@ func LoadConfig() *Config {
 		OSVURL:        getEnv("OSV_URL", "https://api.osv.dev/v1/querybatch"),
 		ConsumerGroup: getEnv("CONSUMER_GROUP", "myesi-vuln-group"),
 		Port:          getEnv("PORT", "8080"),
+	}
+
+	// --- Load optional scheduler.yml if present ---
+	if file, err := os.ReadFile("internal/config/scheduler.yml"); err == nil {
+		var y Config
+		if err := yaml.Unmarshal(file, &y); err == nil {
+			if y.SchedulerSpec != "" {
+				cfg.SchedulerSpec = y.SchedulerSpec
+			}
+			if y.SchedulerBatchLimit > 0 {
+				cfg.SchedulerBatchLimit = y.SchedulerBatchLimit
+			}
+			if y.KafkaBroker != "" {
+				cfg.KafkaBroker = y.KafkaBroker
+			}
+			if y.KafkaTopic != "" {
+				cfg.KafkaTopic = y.KafkaTopic
+			}
+			if y.ConsumerGroup != "" {
+				cfg.ConsumerGroup = y.ConsumerGroup
+			}
+		}
 	}
 
 	log.Printf("[CONFIG] Loaded configuration: %+v\n", cfg)
