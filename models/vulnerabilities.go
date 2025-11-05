@@ -29,6 +29,8 @@ type Vulnerability struct {
 	ProjectName        null.String `boil:"project_name" json:"project_name,omitempty" toml:"project_name" yaml:"project_name,omitempty"`
 	ComponentName      string      `boil:"component_name" json:"component_name" toml:"component_name" yaml:"component_name"`
 	ComponentVersion   string      `boil:"component_version" json:"component_version" toml:"component_version" yaml:"component_version"`
+	FixAvailable       null.Bool   `boil:"fix_available" json:"fix_available,omitempty" toml:"fix_available" yaml:"fix_available,omitempty"`
+	FixedVersion       null.String `boil:"fixed_version" json:"fixed_version,omitempty" toml:"fixed_version" yaml:"fixed_version,omitempty"`
 	VulnID             null.String `boil:"vuln_id" json:"vuln_id,omitempty" toml:"vuln_id" yaml:"vuln_id,omitempty"`
 	Severity           null.String `boil:"severity" json:"severity,omitempty" toml:"severity" yaml:"severity,omitempty"`
 	OsvMetadata        null.JSON   `boil:"osv_metadata" json:"osv_metadata,omitempty" toml:"osv_metadata" yaml:"osv_metadata,omitempty"`
@@ -48,6 +50,8 @@ var VulnerabilityColumns = struct {
 	ProjectName        string
 	ComponentName      string
 	ComponentVersion   string
+	FixAvailable       string
+	FixedVersion       string
 	VulnID             string
 	Severity           string
 	OsvMetadata        string
@@ -62,6 +66,8 @@ var VulnerabilityColumns = struct {
 	ProjectName:        "project_name",
 	ComponentName:      "component_name",
 	ComponentVersion:   "component_version",
+	FixAvailable:       "fix_available",
+	FixedVersion:       "fixed_version",
 	VulnID:             "vuln_id",
 	Severity:           "severity",
 	OsvMetadata:        "osv_metadata",
@@ -78,6 +84,8 @@ var VulnerabilityTableColumns = struct {
 	ProjectName        string
 	ComponentName      string
 	ComponentVersion   string
+	FixAvailable       string
+	FixedVersion       string
 	VulnID             string
 	Severity           string
 	OsvMetadata        string
@@ -92,6 +100,8 @@ var VulnerabilityTableColumns = struct {
 	ProjectName:        "vulnerabilities.project_name",
 	ComponentName:      "vulnerabilities.component_name",
 	ComponentVersion:   "vulnerabilities.component_version",
+	FixAvailable:       "vulnerabilities.fix_available",
+	FixedVersion:       "vulnerabilities.fixed_version",
 	VulnID:             "vulnerabilities.vuln_id",
 	Severity:           "vulnerabilities.severity",
 	OsvMetadata:        "vulnerabilities.osv_metadata",
@@ -171,6 +181,8 @@ var VulnerabilityWhere = struct {
 	ProjectName        whereHelpernull_String
 	ComponentName      whereHelperstring
 	ComponentVersion   whereHelperstring
+	FixAvailable       whereHelpernull_Bool
+	FixedVersion       whereHelpernull_String
 	VulnID             whereHelpernull_String
 	Severity           whereHelpernull_String
 	OsvMetadata        whereHelpernull_JSON
@@ -185,6 +197,8 @@ var VulnerabilityWhere = struct {
 	ProjectName:        whereHelpernull_String{field: "\"vulnerabilities\".\"project_name\""},
 	ComponentName:      whereHelperstring{field: "\"vulnerabilities\".\"component_name\""},
 	ComponentVersion:   whereHelperstring{field: "\"vulnerabilities\".\"component_version\""},
+	FixAvailable:       whereHelpernull_Bool{field: "\"vulnerabilities\".\"fix_available\""},
+	FixedVersion:       whereHelpernull_String{field: "\"vulnerabilities\".\"fixed_version\""},
 	VulnID:             whereHelpernull_String{field: "\"vulnerabilities\".\"vuln_id\""},
 	Severity:           whereHelpernull_String{field: "\"vulnerabilities\".\"severity\""},
 	OsvMetadata:        whereHelpernull_JSON{field: "\"vulnerabilities\".\"osv_metadata\""},
@@ -212,9 +226,9 @@ func (*vulnerabilityR) NewStruct() *vulnerabilityR {
 type vulnerabilityL struct{}
 
 var (
-	vulnerabilityAllColumns            = []string{"id", "sbom_id", "project_name", "component_name", "component_version", "vuln_id", "severity", "osv_metadata", "cvss_vector", "sbom_component_count", "sbom_hash", "created_at", "updated_at"}
+	vulnerabilityAllColumns            = []string{"id", "sbom_id", "project_name", "component_name", "component_version", "fix_available", "fixed_version", "vuln_id", "severity", "osv_metadata", "cvss_vector", "sbom_component_count", "sbom_hash", "created_at", "updated_at"}
 	vulnerabilityColumnsWithoutDefault = []string{"sbom_id", "component_name", "component_version"}
-	vulnerabilityColumnsWithDefault    = []string{"id", "project_name", "vuln_id", "severity", "osv_metadata", "cvss_vector", "sbom_component_count", "sbom_hash", "created_at", "updated_at"}
+	vulnerabilityColumnsWithDefault    = []string{"id", "project_name", "fix_available", "fixed_version", "vuln_id", "severity", "osv_metadata", "cvss_vector", "sbom_component_count", "sbom_hash", "created_at", "updated_at"}
 	vulnerabilityPrimaryKeyColumns     = []string{"id"}
 	vulnerabilityGeneratedColumns      = []string{}
 )
