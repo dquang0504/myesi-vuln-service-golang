@@ -11,13 +11,10 @@ import (
 	"myesi-vuln-service-golang/internal/config"
 	"myesi-vuln-service-golang/internal/redis"
 	"myesi-vuln-service-golang/internal/services"
-	"myesi-vuln-service-golang/models"
 	"myesi-vuln-service-golang/utils"
 	"strings"
 	"time"
 
-	"github.com/aarondl/null/v8"
-	"github.com/aarondl/sqlboiler/v4/boil"
 	"github.com/segmentio/kafka-go"
 
 	// --- OpenTelemetry ---
@@ -160,11 +157,6 @@ func processEvent(evt SBOMEvent, db *sql.DB) error {
 		return nil
 	}
 
-	// Delete all old vulnerabilities for this SBOM
-	if _, err := db.ExecContext(ctx, "DELETE FROM vulnerabilities WHERE sbom_id=$1", evt.SBOMID); err != nil {
-		return fmt.Errorf("failed to clear old vulnerabilities: %w", err)
-	}
-
 	// Query OSV for each component (parallelized)
 	osvRecords := make([]config.OSVRecord, 0, len(evt.Components))
 	for _, c := range evt.Components {
@@ -229,8 +221,8 @@ func processEvent(evt SBOMEvent, db *sql.DB) error {
 			if arr, _ := vsRaw.([]interface{}); len(arr) > 0 {
 				if first, ok := arr[0].(map[string]interface{}); ok {
 					vulnID = interfaceToStringPtr(first["id"])
-					
-					// --- fallback severity ---
+
+					// --- Try extract severity ---
 					var sev *string
 					// 1. cvss vector
 					if cvssRaw, ok := first["cvss"]; ok {
@@ -251,7 +243,7 @@ func processEvent(evt SBOMEvent, db *sql.DB) error {
 						}
 					}
 					severity = sev
-					
+
 				}
 			}
 		}
@@ -265,45 +257,82 @@ func processEvent(evt SBOMEvent, db *sql.DB) error {
 
 		sevLabel := "unknown"
 		var cvssVector *string
+		fixAvailable := false
+		var fixedVersion *string
 
 		if severity != nil && *severity != "" {
 			sevLabel = *severity
 		} else {
-			if s, vec, err := services.FetchSeverity(ctx, *vulnID); err == nil {
+			if s, vec, fixAvail, fixVer, err := services.FetchVulnDetails(ctx, *vulnID); err == nil {
 				sevLabel = s
 				cvssVector = vec
+				fixAvailable = fixAvail
+				fixedVersion = fixVer
 			}
 		}
 
-		if strings.HasPrefix(*vulnID, "MAL"){
+		if strings.HasPrefix(*vulnID, "MAL") {
 			sevLabel = "critical"
 		}
 
-		v := models.Vulnerability{
-			SbomID:           evt.SBOMID,
-			ProjectName:      null.StringFrom(evt.Project),
-			ComponentName:    item.Comp.Package.Name,
-			ComponentVersion: item.Comp.Version,
-			VulnID:           null.StringFromPtr(vulnID),
-			Severity:         null.StringFromPtr(&sevLabel),
-			OsvMetadata:      null.JSONFrom(metaBytes),
-			CVSSVector: 	  null.StringFromPtr(cvssVector),	
+		// --- UPSERT to DB ---
+		_, err := db.ExecContext(ctx, `
+			INSERT INTO vulnerabilities (
+				sbom_id, project_name, component_name, component_version,
+				vuln_id, severity, osv_metadata, cvss_vector,
+				fix_available, fixed_version, updated_at
+			)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
+			ON CONFLICT (sbom_id, component_name, component_version)
+			DO UPDATE SET
+				vuln_id        = EXCLUDED.vuln_id,
+				severity       = EXCLUDED.severity,
+				osv_metadata   = EXCLUDED.osv_metadata,
+				cvss_vector    = EXCLUDED.cvss_vector,
+				fix_available  = EXCLUDED.fix_available,
+				fixed_version  = EXCLUDED.fixed_version,
+				updated_at     = NOW();
+		`, evt.SBOMID, evt.Project, item.Comp.Package.Name, item.Comp.Version,
+			vulnID, sevLabel, metaBytes, cvssVector, fixAvailable, fixedVersion)
+
+		if err != nil {
+			log.Printf("[VulnService] Upsert vuln failed for %s@%s: %v",
+				item.Comp.Package.Name, item.Comp.Version, err)
+			continue
 		}
 
-		if err := v.Insert(ctx, db, boil.Infer()); err == nil {
-			// push realtime for frontend
-			utils.PublishVulnRealtime(evt.Project, map[string]interface{}{
-				"cve":       vulnID,
-				"component": item.Comp.Package.Name,
-				"version":   item.Comp.Version,
-				"severity":  sevLabel,
-				"project":   evt.Project,
-				"osv_meta":  metaBytes,
-			})
+		log.Printf("[VulnService] Upserted vuln %s@%s (%s)",
+			item.Comp.Package.Name, item.Comp.Version, sevLabel)
 
-		} else {
-			log.Printf("[VulnService] Insert vuln failed for %s: %v", item.Comp.Package.Name, err)
+		// --- Push realtime event ---
+		utils.BroadcastVulnEvent(evt.Project, map[string]interface{}{
+			"type":         "vulnerability",
+			"cve":          vulnID,
+			"component":    item.Comp.Package.Name,
+			"version":      item.Comp.Version,
+			"project_name": evt.Project,
+			"severity":     sevLabel,
+			"osv_meta":     meta,
+		})
+
+		// --- Auto map ISO control ---
+		var cvssScore float64 = 0.0
+		if cvssVector != nil {
+			score, err := utils.ParseCvssVectorToScore(*cvssVector)
+			if err == nil {
+				cvssScore = score
+			}
 		}
+
+		_ = services.AutoMapControlAdvanced(
+			ctx,
+			db,
+			evt.SBOMID,
+			item.Comp.Package.Name,
+			item.Comp.Version,
+			cvssScore,
+			sevLabel,
+		)
 
 	}
 

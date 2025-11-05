@@ -15,11 +15,13 @@ import (
 	"myesi-vuln-service-golang/internal/consumer"
 	"myesi-vuln-service-golang/internal/db"
 	"myesi-vuln-service-golang/internal/redis"
+	"myesi-vuln-service-golang/internal/scheduler"
 	"os"
 	"os/signal"
 	"syscall"
 
 	fiber "github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 	fiberSwagger "github.com/gofiber/swagger"
 )
 
@@ -39,6 +41,8 @@ func main() {
 			log.Fatalf("consume error: %v", err)
 		}
 	}()
+	//init scheduler
+	go scheduler.StartDailyScheduler()
 
 	if err := consumer.InitMetrics(); err != nil {
 		log.Fatalf("failed to init metrics: %v", err)
@@ -46,6 +50,14 @@ func main() {
 
 	//start API
 	app := fiber.New()
+	// ✅ Enable CORS
+	app.Use(cors.New(cors.Config{
+		AllowOrigins:     "https://localhost:8000, https://127.0.0.1:8000, https://localhost:3000", // chỉ gateway gọi được
+		AllowMethods:     "GET,POST,HEAD,PUT,DELETE,PATCH,OPTIONS",
+		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
+		ExposeHeaders:    "Content-Length",
+		AllowCredentials: true, // vẫn giữ true nếu cần cookie / token
+	}))
 	v1.RegisterVulnRoutes(app)
 
 	// Swagger UI

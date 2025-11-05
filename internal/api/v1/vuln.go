@@ -1,12 +1,14 @@
 package v1
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"myesi-vuln-service-golang/internal/config"
 	"myesi-vuln-service-golang/internal/db"
 	"myesi-vuln-service-golang/utils"
 	"strings"
+	"time"
 
 	fiber "github.com/gofiber/fiber/v2"
 	kafka "github.com/segmentio/kafka-go"
@@ -15,10 +17,11 @@ import (
 func RegisterVulnRoutes(app *fiber.App) {
 	r := app.Group("/api/vuln")
 	r.Get("/health", HealthCheck)
-	r.Post("/refresh", refreshVuln)    //refreshVuln triggers a re-scan: either publish a Kafka event or run inline
+	r.Post("/refresh", refreshVuln) //refreshVuln triggers a re-scan: either publish a Kafka event or run inline
 	r.Get("/stream", utils.StreamVulnerabilities)
+	r.Get("/list", ListVulnerabilities)
 	r.Get("/:sbom_id", getVulnsBySBOM) //getVulnsBySBOM returns stored vulnerabilities for an sbom_id
-	
+
 }
 
 // @Summary Health check
@@ -101,4 +104,58 @@ func refreshVuln(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "refresh queued"})
 }
 
+// List tất cả vuln (hoặc theo project_name)
+func ListVulnerabilities(c *fiber.Ctx) error {
+	ctx := context.Background()
+	project := c.Query("project_name")
+	limit := c.Query("limit", "200")
 
+	query := `
+	SELECT id, sbom_id, project_name, component_name AS component,
+	       component_version AS version, vuln_id AS cve,
+	       severity, cvss_vector, osv_metadata, fix_available, fixed_version, updated_at
+	FROM vulnerabilities
+	`
+	args := []interface{}{}
+	if project != "" {
+		query += " WHERE project_name = $1"
+		args = append(args, project)
+	}
+	query += " ORDER BY updated_at DESC LIMIT " + limit
+
+	rows, err := db.Conn.QueryContext(ctx, query, args...)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database error: " + err.Error()})
+	}
+	defer rows.Close()
+
+	type Vuln struct {
+		ID        int64                  `json:"id"`
+		SbomID    string                 `json:"sbom_id"`
+		Project   string                 `json:"project_name"`
+		Component string                 `json:"component"`
+		Version   string                 `json:"version"`
+		CVE       string                 `json:"cve"`
+		Severity  string                 `json:"severity"`
+		CVSS      *string                `json:"cvss_vector,omitempty"`
+		OSVMeta   map[string]interface{} `json:"osv_meta,omitempty"`
+		FixAvail  bool                   `json:"fix_available"`
+		FixedVer  *string                `json:"fixed_version,omitempty"`
+		UpdatedAt time.Time              `json:"updated_at"`
+	}
+
+	var vulns []Vuln
+	for rows.Next() {
+		var v Vuln
+		var osvRaw []byte
+		if err := rows.Scan(&v.ID, &v.SbomID, &v.Project, &v.Component, &v.Version, &v.CVE, &v.Severity, &v.CVSS, &osvRaw, &v.FixAvail, &v.FixedVer, &v.UpdatedAt); err != nil {
+			log.Println("scan error:", err)
+			continue
+		}
+		if len(osvRaw) > 0 {
+			_ = json.Unmarshal(osvRaw, &v.OSVMeta)
+		}
+		vulns = append(vulns, v)
+	}
+	return c.JSON(vulns)
+}

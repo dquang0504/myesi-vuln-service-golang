@@ -14,11 +14,16 @@ import (
 	"time"
 )
 
-var OSVURL = config.LoadConfig().OSVURL
+var (
+	//rate limiter for OSV queries
+	osvLimiter = time.Tick(time.Second / 10) // 5 requests per second
+	OSVURL     = config.LoadConfig().OSVURL
+)
 
 // QueryOSVBatch sends record(s) of components (package name + version) to OSV API to fetch
 // vulnerabilities if found any
 func QueryOSVBatch(ctx context.Context, comps []config.OSVRecord) ([]map[string]interface{}, error) {
+	<-osvLimiter
 	if len(comps) == 0 {
 		return nil, fmt.Errorf("no components provided")
 	}
@@ -70,6 +75,8 @@ func QueryOSVBatch(ctx context.Context, comps []config.OSVRecord) ([]map[string]
 		return nil, err
 	}
 
+	fmt.Println("parsed: ", parsed)
+
 	resultsRaw, ok := parsed["results"]
 	if !ok {
 		return nil, fmt.Errorf("no 'results' field in OSV response")
@@ -115,49 +122,44 @@ func CvssToSeverity(score float64) string {
 	}
 }
 
-// FetchSeverity fetches vulnerability details from OSV API,
-// returning both normalized severity label (low/medium/high/critical)
-// and optional CVSS vector string if available.
-func FetchSeverity(ctx context.Context, vulnID string) (string, *string, error) {
+// FetchVulnDetails fetches vulnerability details from OSV API,
+// returning severity label, optional CVSS vector, and patch info if available.
+func FetchVulnDetails(ctx context.Context, vulnID string) (string, *string, bool, *string, error) {
 	url := fmt.Sprintf("https://api.osv.dev/v1/vulns/%s", vulnID)
 	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "unknown", nil, fmt.Errorf("request failed: %w", err)
+		return "unknown", nil, false, nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return "unknown", nil, fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
+		return "unknown", nil, false, nil, fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
 	}
 
 	var data map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		return "unknown", nil, fmt.Errorf("decode error: %w", err)
+		return "unknown", nil, false, nil, fmt.Errorf("decode error: %w", err)
 	}
 
-	var (
-		label      = "unknown"
-		cvssVector *string
-	)
+	label := "unknown"
+	var cvssVector *string
+	fixAvailable := false
+	var fixedVersion *string
 
-	// --- Parse severity array ---
+	// --- Parse severity ---
 	if sevRaw, ok := data["severity"]; ok {
 		if arr, ok := sevRaw.([]interface{}); ok {
 			for _, item := range arr {
 				if m, ok := item.(map[string]interface{}); ok {
-					// (1) numeric CVSS score → derive severity level
 					if s, ok := m["score"].(string); ok {
 						if f, err := strconv.ParseFloat(s, 64); err == nil {
 							label = CvssToSeverity(f)
 						} else if strings.HasPrefix(s, "CVSS:") {
-							// (2) vector string, e.g. CVSS:3.1/AV:N/AC:H/...
 							cvssVector = &s
 						}
 					}
-
-					// (3) capture vector string even if already parsed numeric
 					if t, ok := m["type"].(string); ok && strings.HasPrefix(t, "CVSS") {
 						if s, ok := m["score"].(string); ok && strings.HasPrefix(s, "CVSS:") {
 							cvssVector = &s
@@ -170,7 +172,7 @@ func FetchSeverity(ctx context.Context, vulnID string) (string, *string, error) 
 		}
 	}
 
-	// --- fallback: database_specific.severity ---
+	// --- Fallback: database_specific.severity ---
 	if label == "unknown" {
 		if ds, ok := data["database_specific"].(map[string]interface{}); ok {
 			if s, ok := ds["severity"].(string); ok {
@@ -179,6 +181,30 @@ func FetchSeverity(ctx context.Context, vulnID string) (string, *string, error) 
 		}
 	}
 
-	return label, cvssVector, nil
-}
+	// --- Extract fix info ---
+	if affected, ok := data["affected"].([]interface{}); ok {
+		for _, a := range affected {
+			if aMap, ok := a.(map[string]interface{}); ok {
+				if ranges, ok := aMap["ranges"].([]interface{}); ok {
+					for _, r := range ranges {
+						if rMap, ok := r.(map[string]interface{}); ok {
+							if events, ok := rMap["events"].([]interface{}); ok {
+								for _, e := range events {
+									if ev, ok := e.(map[string]interface{}); ok {
+										if fixed, ok := ev["fixed"].(string); ok && fixed != "" {
+											fixAvailable = true
+											fixedVersion = &fixed
+											break
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 
+	return label, cvssVector, fixAvailable, fixedVersion, nil
+}
