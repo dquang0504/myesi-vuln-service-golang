@@ -2,5 +2,8 @@ kafka_broker: "kafka:9092"
 kafka_topic: "vuln.refresh"
 consumer_group: "vuln-consumer"
 
-scheduler_spec: "0 2 * * *"  # how often the scheduler will run
-scheduler_batch_limit: 50  # a max of 50 sboms each run
+scheduler_spec: "@every 6h"
+scheduler_batch_limit: 50
+
+repo_cleanup_spec: "@daily"         # daily repo stale check
+repo_retention_days: 7              # 7 days stale => delete repo

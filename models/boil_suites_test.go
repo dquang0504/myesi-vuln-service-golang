@@ -13,6 +13,9 @@ import "testing"
 // Separating the tests thusly grants avoidance of Postgres deadlocks.
 func TestParent(t *testing.T) {
 	t.Run("AlembicVersions", testAlembicVersions)
+	t.Run("OrganizationMembers", testOrganizationMembers)
+	t.Run("Organizations", testOrganizations)
+	t.Run("Projects", testProjects)
 	t.Run("Sboms", testSboms)
 	t.Run("Users", testUsers)
 	t.Run("Vulnerabilities", testVulnerabilities)
@@ -20,6 +23,9 @@ func TestParent(t *testing.T) {
 
 func TestDelete(t *testing.T) {
 	t.Run("AlembicVersions", testAlembicVersionsDelete)
+	t.Run("OrganizationMembers", testOrganizationMembersDelete)
+	t.Run("Organizations", testOrganizationsDelete)
+	t.Run("Projects", testProjectsDelete)
 	t.Run("Sboms", testSbomsDelete)
 	t.Run("Users", testUsersDelete)
 	t.Run("Vulnerabilities", testVulnerabilitiesDelete)
@@ -27,6 +33,9 @@ func TestDelete(t *testing.T) {
 
 func TestQueryDeleteAll(t *testing.T) {
 	t.Run("AlembicVersions", testAlembicVersionsQueryDeleteAll)
+	t.Run("OrganizationMembers", testOrganizationMembersQueryDeleteAll)
+	t.Run("Organizations", testOrganizationsQueryDeleteAll)
+	t.Run("Projects", testProjectsQueryDeleteAll)
 	t.Run("Sboms", testSbomsQueryDeleteAll)
 	t.Run("Users", testUsersQueryDeleteAll)
 	t.Run("Vulnerabilities", testVulnerabilitiesQueryDeleteAll)
@@ -34,6 +43,9 @@ func TestQueryDeleteAll(t *testing.T) {
 
 func TestSliceDeleteAll(t *testing.T) {
 	t.Run("AlembicVersions", testAlembicVersionsSliceDeleteAll)
+	t.Run("OrganizationMembers", testOrganizationMembersSliceDeleteAll)
+	t.Run("Organizations", testOrganizationsSliceDeleteAll)
+	t.Run("Projects", testProjectsSliceDeleteAll)
 	t.Run("Sboms", testSbomsSliceDeleteAll)
 	t.Run("Users", testUsersSliceDeleteAll)
 	t.Run("Vulnerabilities", testVulnerabilitiesSliceDeleteAll)
@@ -41,6 +53,9 @@ func TestSliceDeleteAll(t *testing.T) {
 
 func TestExists(t *testing.T) {
 	t.Run("AlembicVersions", testAlembicVersionsExists)
+	t.Run("OrganizationMembers", testOrganizationMembersExists)
+	t.Run("Organizations", testOrganizationsExists)
+	t.Run("Projects", testProjectsExists)
 	t.Run("Sboms", testSbomsExists)
 	t.Run("Users", testUsersExists)
 	t.Run("Vulnerabilities", testVulnerabilitiesExists)
@@ -48,6 +63,9 @@ func TestExists(t *testing.T) {
 
 func TestFind(t *testing.T) {
 	t.Run("AlembicVersions", testAlembicVersionsFind)
+	t.Run("OrganizationMembers", testOrganizationMembersFind)
+	t.Run("Organizations", testOrganizationsFind)
+	t.Run("Projects", testProjectsFind)
 	t.Run("Sboms", testSbomsFind)
 	t.Run("Users", testUsersFind)
 	t.Run("Vulnerabilities", testVulnerabilitiesFind)
@@ -55,6 +73,9 @@ func TestFind(t *testing.T) {
 
 func TestBind(t *testing.T) {
 	t.Run("AlembicVersions", testAlembicVersionsBind)
+	t.Run("OrganizationMembers", testOrganizationMembersBind)
+	t.Run("Organizations", testOrganizationsBind)
+	t.Run("Projects", testProjectsBind)
 	t.Run("Sboms", testSbomsBind)
 	t.Run("Users", testUsersBind)
 	t.Run("Vulnerabilities", testVulnerabilitiesBind)
@@ -62,6 +83,9 @@ func TestBind(t *testing.T) {
 
 func TestOne(t *testing.T) {
 	t.Run("AlembicVersions", testAlembicVersionsOne)
+	t.Run("OrganizationMembers", testOrganizationMembersOne)
+	t.Run("Organizations", testOrganizationsOne)
+	t.Run("Projects", testProjectsOne)
 	t.Run("Sboms", testSbomsOne)
 	t.Run("Users", testUsersOne)
 	t.Run("Vulnerabilities", testVulnerabilitiesOne)
@@ -69,6 +93,9 @@ func TestOne(t *testing.T) {
 
 func TestAll(t *testing.T) {
 	t.Run("AlembicVersions", testAlembicVersionsAll)
+	t.Run("OrganizationMembers", testOrganizationMembersAll)
+	t.Run("Organizations", testOrganizationsAll)
+	t.Run("Projects", testProjectsAll)
 	t.Run("Sboms", testSbomsAll)
 	t.Run("Users", testUsersAll)
 	t.Run("Vulnerabilities", testVulnerabilitiesAll)
@@ -76,6 +103,9 @@ func TestAll(t *testing.T) {
 
 func TestCount(t *testing.T) {
 	t.Run("AlembicVersions", testAlembicVersionsCount)
+	t.Run("OrganizationMembers", testOrganizationMembersCount)
+	t.Run("Organizations", testOrganizationsCount)
+	t.Run("Projects", testProjectsCount)
 	t.Run("Sboms", testSbomsCount)
 	t.Run("Users", testUsersCount)
 	t.Run("Vulnerabilities", testVulnerabilitiesCount)
@@ -83,6 +113,9 @@ func TestCount(t *testing.T) {
 
 func TestHooks(t *testing.T) {
 	t.Run("AlembicVersions", testAlembicVersionsHooks)
+	t.Run("OrganizationMembers", testOrganizationMembersHooks)
+	t.Run("Organizations", testOrganizationsHooks)
+	t.Run("Projects", testProjectsHooks)
 	t.Run("Sboms", testSbomsHooks)
 	t.Run("Users", testUsersHooks)
 	t.Run("Vulnerabilities", testVulnerabilitiesHooks)
@@ -91,6 +124,12 @@ func TestHooks(t *testing.T) {
 func TestInsert(t *testing.T) {
 	t.Run("AlembicVersions", testAlembicVersionsInsert)
 	t.Run("AlembicVersions", testAlembicVersionsInsertWhitelist)
+	t.Run("OrganizationMembers", testOrganizationMembersInsert)
+	t.Run("OrganizationMembers", testOrganizationMembersInsertWhitelist)
+	t.Run("Organizations", testOrganizationsInsert)
+	t.Run("Organizations", testOrganizationsInsertWhitelist)
+	t.Run("Projects", testProjectsInsert)
+	t.Run("Projects", testProjectsInsertWhitelist)
 	t.Run("Sboms", testSbomsInsert)
 	t.Run("Sboms", testSbomsInsertWhitelist)
 	t.Run("Users", testUsersInsert)
@@ -101,6 +140,9 @@ func TestInsert(t *testing.T) {
 
 func TestReload(t *testing.T) {
 	t.Run("AlembicVersions", testAlembicVersionsReload)
+	t.Run("OrganizationMembers", testOrganizationMembersReload)
+	t.Run("Organizations", testOrganizationsReload)
+	t.Run("Projects", testProjectsReload)
 	t.Run("Sboms", testSbomsReload)
 	t.Run("Users", testUsersReload)
 	t.Run("Vulnerabilities", testVulnerabilitiesReload)
@@ -108,6 +150,9 @@ func TestReload(t *testing.T) {
 
 func TestReloadAll(t *testing.T) {
 	t.Run("AlembicVersions", testAlembicVersionsReloadAll)
+	t.Run("OrganizationMembers", testOrganizationMembersReloadAll)
+	t.Run("Organizations", testOrganizationsReloadAll)
+	t.Run("Projects", testProjectsReloadAll)
 	t.Run("Sboms", testSbomsReloadAll)
 	t.Run("Users", testUsersReloadAll)
 	t.Run("Vulnerabilities", testVulnerabilitiesReloadAll)
@@ -115,6 +160,9 @@ func TestReloadAll(t *testing.T) {
 
 func TestSelect(t *testing.T) {
 	t.Run("AlembicVersions", testAlembicVersionsSelect)
+	t.Run("OrganizationMembers", testOrganizationMembersSelect)
+	t.Run("Organizations", testOrganizationsSelect)
+	t.Run("Projects", testProjectsSelect)
 	t.Run("Sboms", testSbomsSelect)
 	t.Run("Users", testUsersSelect)
 	t.Run("Vulnerabilities", testVulnerabilitiesSelect)
@@ -122,6 +170,9 @@ func TestSelect(t *testing.T) {
 
 func TestUpdate(t *testing.T) {
 	t.Run("AlembicVersions", testAlembicVersionsUpdate)
+	t.Run("OrganizationMembers", testOrganizationMembersUpdate)
+	t.Run("Organizations", testOrganizationsUpdate)
+	t.Run("Projects", testProjectsUpdate)
 	t.Run("Sboms", testSbomsUpdate)
 	t.Run("Users", testUsersUpdate)
 	t.Run("Vulnerabilities", testVulnerabilitiesUpdate)
@@ -129,6 +180,9 @@ func TestUpdate(t *testing.T) {
 
 func TestSliceUpdateAll(t *testing.T) {
 	t.Run("AlembicVersions", testAlembicVersionsSliceUpdateAll)
+	t.Run("OrganizationMembers", testOrganizationMembersSliceUpdateAll)
+	t.Run("Organizations", testOrganizationsSliceUpdateAll)
+	t.Run("Projects", testProjectsSliceUpdateAll)
 	t.Run("Sboms", testSbomsSliceUpdateAll)
 	t.Run("Users", testUsersSliceUpdateAll)
 	t.Run("Vulnerabilities", testVulnerabilitiesSliceUpdateAll)
