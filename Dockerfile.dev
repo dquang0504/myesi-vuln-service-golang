@@ -1,24 +1,33 @@
-# ---------- STAGE: Development ----------
+# ---------- DEV STAGE ----------
 FROM golang:1.25-alpine
 
 WORKDIR /app
 
-# Install tools: git, curl, bash, build-base, air, swag, syft
-RUN apk add --no-cache git curl bash build-base ca-certificates \
-    && go install github.com/air-verse/air@latest \
-    && go install github.com/swaggo/swag/cmd/swag@latest 
+# Install build + runtime deps + security tools
+RUN apk add --no-cache python3 py3-pip git bash curl ca-certificates \
+    && pip install --no-cache-dir --break-system-packages semgrep bandit \
+    && semgrep scan --config auto --quiet --dry-run || true \
+    && bandit --version
 
-# Copy go.mod and go.sum first (better caching)
+# ⚙️ Pre-install semgrep rulesets cho Golang + JS/TS + Python
+RUN semgrep --config p/golang --quiet || true \
+    && semgrep --config p/javascript --quiet || true \
+    && semgrep --config p/typescript --quiet || true \
+    && semgrep --config p/python --quiet || true \
+    && semgrep --config auto --quiet || true
+
+# Copy go mod và dependencies
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy all source code
+# Copy toàn bộ source code (mount lại trong docker-compose dev)
 COPY . .
 
-# Generate Swagger docs
-RUN swag init -g cmd/main.go -o docs
+# Install live reload tool
+RUN go install github.com/air-verse/air@latest
+
+ENV SEMGREP_APP_TOKEN=${SEMGREP_APP_TOKEN}
 
 EXPOSE 8003
 
-# Run Air for hot reload
 CMD ["air", "-c", ".air.toml"]

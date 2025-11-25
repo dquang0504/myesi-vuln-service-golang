@@ -25,10 +25,16 @@ import (
 // User is an object representing the database table.
 type User struct {
 	ID             int         `boil:"id" json:"id" toml:"id" yaml:"id"`
+	Name           string      `boil:"name" json:"name" toml:"name" yaml:"name"`
 	Email          string      `boil:"email" json:"email" toml:"email" yaml:"email"`
 	HashedPassword string      `boil:"hashed_password" json:"hashed_password" toml:"hashed_password" yaml:"hashed_password"`
-	IsActive       null.Bool   `boil:"is_active" json:"is_active,omitempty" toml:"is_active" yaml:"is_active,omitempty"`
 	Role           null.String `boil:"role" json:"role,omitempty" toml:"role" yaml:"role,omitempty"`
+	Status         null.String `boil:"status" json:"status,omitempty" toml:"status" yaml:"status,omitempty"`
+	IsActive       null.Bool   `boil:"is_active" json:"is_active,omitempty" toml:"is_active" yaml:"is_active,omitempty"`
+	OrganizationID null.Int    `boil:"organization_id" json:"organization_id,omitempty" toml:"organization_id" yaml:"organization_id,omitempty"`
+	CreatedAt      null.Time   `boil:"created_at" json:"created_at,omitempty" toml:"created_at" yaml:"created_at,omitempty"`
+	LastLogin      null.Time   `boil:"last_login" json:"last_login,omitempty" toml:"last_login" yaml:"last_login,omitempty"`
+	GithubToken    null.String `boil:"github_token" json:"github_token,omitempty" toml:"github_token" yaml:"github_token,omitempty"`
 
 	R *userR `boil:"-" json:"-" toml:"-" yaml:"-"`
 	L userL  `boil:"-" json:"-" toml:"-" yaml:"-"`
@@ -36,101 +42,103 @@ type User struct {
 
 var UserColumns = struct {
 	ID             string
+	Name           string
 	Email          string
 	HashedPassword string
-	IsActive       string
 	Role           string
+	Status         string
+	IsActive       string
+	OrganizationID string
+	CreatedAt      string
+	LastLogin      string
+	GithubToken    string
 }{
 	ID:             "id",
+	Name:           "name",
 	Email:          "email",
 	HashedPassword: "hashed_password",
-	IsActive:       "is_active",
 	Role:           "role",
+	Status:         "status",
+	IsActive:       "is_active",
+	OrganizationID: "organization_id",
+	CreatedAt:      "created_at",
+	LastLogin:      "last_login",
+	GithubToken:    "github_token",
 }
 
 var UserTableColumns = struct {
 	ID             string
+	Name           string
 	Email          string
 	HashedPassword string
-	IsActive       string
 	Role           string
+	Status         string
+	IsActive       string
+	OrganizationID string
+	CreatedAt      string
+	LastLogin      string
+	GithubToken    string
 }{
 	ID:             "users.id",
+	Name:           "users.name",
 	Email:          "users.email",
 	HashedPassword: "users.hashed_password",
-	IsActive:       "users.is_active",
 	Role:           "users.role",
+	Status:         "users.status",
+	IsActive:       "users.is_active",
+	OrganizationID: "users.organization_id",
+	CreatedAt:      "users.created_at",
+	LastLogin:      "users.last_login",
+	GithubToken:    "users.github_token",
 }
 
 // Generated where
 
-type whereHelperint struct{ field string }
-
-func (w whereHelperint) EQ(x int) qm.QueryMod  { return qmhelper.Where(w.field, qmhelper.EQ, x) }
-func (w whereHelperint) NEQ(x int) qm.QueryMod { return qmhelper.Where(w.field, qmhelper.NEQ, x) }
-func (w whereHelperint) LT(x int) qm.QueryMod  { return qmhelper.Where(w.field, qmhelper.LT, x) }
-func (w whereHelperint) LTE(x int) qm.QueryMod { return qmhelper.Where(w.field, qmhelper.LTE, x) }
-func (w whereHelperint) GT(x int) qm.QueryMod  { return qmhelper.Where(w.field, qmhelper.GT, x) }
-func (w whereHelperint) GTE(x int) qm.QueryMod { return qmhelper.Where(w.field, qmhelper.GTE, x) }
-func (w whereHelperint) IN(slice []int) qm.QueryMod {
-	values := make([]interface{}, 0, len(slice))
-	for _, value := range slice {
-		values = append(values, value)
-	}
-	return qm.WhereIn(fmt.Sprintf("%s IN ?", w.field), values...)
-}
-func (w whereHelperint) NIN(slice []int) qm.QueryMod {
-	values := make([]interface{}, 0, len(slice))
-	for _, value := range slice {
-		values = append(values, value)
-	}
-	return qm.WhereNotIn(fmt.Sprintf("%s NOT IN ?", w.field), values...)
-}
-
-type whereHelpernull_Bool struct{ field string }
-
-func (w whereHelpernull_Bool) EQ(x null.Bool) qm.QueryMod {
-	return qmhelper.WhereNullEQ(w.field, false, x)
-}
-func (w whereHelpernull_Bool) NEQ(x null.Bool) qm.QueryMod {
-	return qmhelper.WhereNullEQ(w.field, true, x)
-}
-func (w whereHelpernull_Bool) LT(x null.Bool) qm.QueryMod {
-	return qmhelper.Where(w.field, qmhelper.LT, x)
-}
-func (w whereHelpernull_Bool) LTE(x null.Bool) qm.QueryMod {
-	return qmhelper.Where(w.field, qmhelper.LTE, x)
-}
-func (w whereHelpernull_Bool) GT(x null.Bool) qm.QueryMod {
-	return qmhelper.Where(w.field, qmhelper.GT, x)
-}
-func (w whereHelpernull_Bool) GTE(x null.Bool) qm.QueryMod {
-	return qmhelper.Where(w.field, qmhelper.GTE, x)
-}
-
-func (w whereHelpernull_Bool) IsNull() qm.QueryMod    { return qmhelper.WhereIsNull(w.field) }
-func (w whereHelpernull_Bool) IsNotNull() qm.QueryMod { return qmhelper.WhereIsNotNull(w.field) }
-
 var UserWhere = struct {
 	ID             whereHelperint
+	Name           whereHelperstring
 	Email          whereHelperstring
 	HashedPassword whereHelperstring
-	IsActive       whereHelpernull_Bool
 	Role           whereHelpernull_String
+	Status         whereHelpernull_String
+	IsActive       whereHelpernull_Bool
+	OrganizationID whereHelpernull_Int
+	CreatedAt      whereHelpernull_Time
+	LastLogin      whereHelpernull_Time
+	GithubToken    whereHelpernull_String
 }{
 	ID:             whereHelperint{field: "\"users\".\"id\""},
+	Name:           whereHelperstring{field: "\"users\".\"name\""},
 	Email:          whereHelperstring{field: "\"users\".\"email\""},
 	HashedPassword: whereHelperstring{field: "\"users\".\"hashed_password\""},
-	IsActive:       whereHelpernull_Bool{field: "\"users\".\"is_active\""},
 	Role:           whereHelpernull_String{field: "\"users\".\"role\""},
+	Status:         whereHelpernull_String{field: "\"users\".\"status\""},
+	IsActive:       whereHelpernull_Bool{field: "\"users\".\"is_active\""},
+	OrganizationID: whereHelpernull_Int{field: "\"users\".\"organization_id\""},
+	CreatedAt:      whereHelpernull_Time{field: "\"users\".\"created_at\""},
+	LastLogin:      whereHelpernull_Time{field: "\"users\".\"last_login\""},
+	GithubToken:    whereHelpernull_String{field: "\"users\".\"github_token\""},
 }
 
 // UserRels is where relationship names are stored.
 var UserRels = struct {
-}{}
+	Organization        string
+	OrganizationMembers string
+	CreatedByProjects   string
+	OwnerProjects       string
+}{
+	Organization:        "Organization",
+	OrganizationMembers: "OrganizationMembers",
+	CreatedByProjects:   "CreatedByProjects",
+	OwnerProjects:       "OwnerProjects",
+}
 
 // userR is where relationships are stored.
 type userR struct {
+	Organization        *Organization           `boil:"Organization" json:"Organization" toml:"Organization" yaml:"Organization"`
+	OrganizationMembers OrganizationMemberSlice `boil:"OrganizationMembers" json:"OrganizationMembers" toml:"OrganizationMembers" yaml:"OrganizationMembers"`
+	CreatedByProjects   ProjectSlice            `boil:"CreatedByProjects" json:"CreatedByProjects" toml:"CreatedByProjects" yaml:"CreatedByProjects"`
+	OwnerProjects       ProjectSlice            `boil:"OwnerProjects" json:"OwnerProjects" toml:"OwnerProjects" yaml:"OwnerProjects"`
 }
 
 // NewStruct creates a new relationship struct
@@ -138,13 +146,77 @@ func (*userR) NewStruct() *userR {
 	return &userR{}
 }
 
+func (o *User) GetOrganization() *Organization {
+	if o == nil {
+		return nil
+	}
+
+	return o.R.GetOrganization()
+}
+
+func (r *userR) GetOrganization() *Organization {
+	if r == nil {
+		return nil
+	}
+
+	return r.Organization
+}
+
+func (o *User) GetOrganizationMembers() OrganizationMemberSlice {
+	if o == nil {
+		return nil
+	}
+
+	return o.R.GetOrganizationMembers()
+}
+
+func (r *userR) GetOrganizationMembers() OrganizationMemberSlice {
+	if r == nil {
+		return nil
+	}
+
+	return r.OrganizationMembers
+}
+
+func (o *User) GetCreatedByProjects() ProjectSlice {
+	if o == nil {
+		return nil
+	}
+
+	return o.R.GetCreatedByProjects()
+}
+
+func (r *userR) GetCreatedByProjects() ProjectSlice {
+	if r == nil {
+		return nil
+	}
+
+	return r.CreatedByProjects
+}
+
+func (o *User) GetOwnerProjects() ProjectSlice {
+	if o == nil {
+		return nil
+	}
+
+	return o.R.GetOwnerProjects()
+}
+
+func (r *userR) GetOwnerProjects() ProjectSlice {
+	if r == nil {
+		return nil
+	}
+
+	return r.OwnerProjects
+}
+
 // userL is where Load methods for each relationship are stored.
 type userL struct{}
 
 var (
-	userAllColumns            = []string{"id", "email", "hashed_password", "is_active", "role"}
-	userColumnsWithoutDefault = []string{"email", "hashed_password"}
-	userColumnsWithDefault    = []string{"id", "is_active", "role"}
+	userAllColumns            = []string{"id", "name", "email", "hashed_password", "role", "status", "is_active", "organization_id", "created_at", "last_login", "github_token"}
+	userColumnsWithoutDefault = []string{"name", "email", "hashed_password"}
+	userColumnsWithDefault    = []string{"id", "role", "status", "is_active", "organization_id", "created_at", "last_login", "github_token"}
 	userPrimaryKeyColumns     = []string{"id"}
 	userGeneratedColumns      = []string{}
 )
@@ -454,6 +526,983 @@ func (q userQuery) Exists(ctx context.Context, exec boil.ContextExecutor) (bool,
 	return count > 0, nil
 }
 
+// Organization pointed to by the foreign key.
+func (o *User) Organization(mods ...qm.QueryMod) organizationQuery {
+	queryMods := []qm.QueryMod{
+		qm.Where("\"id\" = ?", o.OrganizationID),
+	}
+
+	queryMods = append(queryMods, mods...)
+
+	return Organizations(queryMods...)
+}
+
+// OrganizationMembers retrieves all the organization_member's OrganizationMembers with an executor.
+func (o *User) OrganizationMembers(mods ...qm.QueryMod) organizationMemberQuery {
+	var queryMods []qm.QueryMod
+	if len(mods) != 0 {
+		queryMods = append(queryMods, mods...)
+	}
+
+	queryMods = append(queryMods,
+		qm.Where("\"organization_members\".\"user_id\"=?", o.ID),
+	)
+
+	return OrganizationMembers(queryMods...)
+}
+
+// CreatedByProjects retrieves all the project's Projects with an executor via created_by column.
+func (o *User) CreatedByProjects(mods ...qm.QueryMod) projectQuery {
+	var queryMods []qm.QueryMod
+	if len(mods) != 0 {
+		queryMods = append(queryMods, mods...)
+	}
+
+	queryMods = append(queryMods,
+		qm.Where("\"projects\".\"created_by\"=?", o.ID),
+	)
+
+	return Projects(queryMods...)
+}
+
+// OwnerProjects retrieves all the project's Projects with an executor via owner_id column.
+func (o *User) OwnerProjects(mods ...qm.QueryMod) projectQuery {
+	var queryMods []qm.QueryMod
+	if len(mods) != 0 {
+		queryMods = append(queryMods, mods...)
+	}
+
+	queryMods = append(queryMods,
+		qm.Where("\"projects\".\"owner_id\"=?", o.ID),
+	)
+
+	return Projects(queryMods...)
+}
+
+// LoadOrganization allows an eager lookup of values, cached into the
+// loaded structs of the objects. This is for an N-1 relationship.
+func (userL) LoadOrganization(ctx context.Context, e boil.ContextExecutor, singular bool, maybeUser interface{}, mods queries.Applicator) error {
+	var slice []*User
+	var object *User
+
+	if singular {
+		var ok bool
+		object, ok = maybeUser.(*User)
+		if !ok {
+			object = new(User)
+			ok = queries.SetFromEmbeddedStruct(&object, &maybeUser)
+			if !ok {
+				return errors.New(fmt.Sprintf("failed to set %T from embedded struct %T", object, maybeUser))
+			}
+		}
+	} else {
+		s, ok := maybeUser.(*[]*User)
+		if ok {
+			slice = *s
+		} else {
+			ok = queries.SetFromEmbeddedStruct(&slice, maybeUser)
+			if !ok {
+				return errors.New(fmt.Sprintf("failed to set %T from embedded struct %T", slice, maybeUser))
+			}
+		}
+	}
+
+	args := make(map[interface{}]struct{})
+	if singular {
+		if object.R == nil {
+			object.R = &userR{}
+		}
+		if !queries.IsNil(object.OrganizationID) {
+			args[object.OrganizationID] = struct{}{}
+		}
+
+	} else {
+		for _, obj := range slice {
+			if obj.R == nil {
+				obj.R = &userR{}
+			}
+
+			if !queries.IsNil(obj.OrganizationID) {
+				args[obj.OrganizationID] = struct{}{}
+			}
+
+		}
+	}
+
+	if len(args) == 0 {
+		return nil
+	}
+
+	argsSlice := make([]interface{}, len(args))
+	i := 0
+	for arg := range args {
+		argsSlice[i] = arg
+		i++
+	}
+
+	query := NewQuery(
+		qm.From(`organizations`),
+		qm.WhereIn(`organizations.id in ?`, argsSlice...),
+	)
+	if mods != nil {
+		mods.Apply(query)
+	}
+
+	results, err := query.QueryContext(ctx, e)
+	if err != nil {
+		return errors.Wrap(err, "failed to eager load Organization")
+	}
+
+	var resultSlice []*Organization
+	if err = queries.Bind(results, &resultSlice); err != nil {
+		return errors.Wrap(err, "failed to bind eager loaded slice Organization")
+	}
+
+	if err = results.Close(); err != nil {
+		return errors.Wrap(err, "failed to close results of eager load for organizations")
+	}
+	if err = results.Err(); err != nil {
+		return errors.Wrap(err, "error occurred during iteration of eager loaded relations for organizations")
+	}
+
+	if len(organizationAfterSelectHooks) != 0 {
+		for _, obj := range resultSlice {
+			if err := obj.doAfterSelectHooks(ctx, e); err != nil {
+				return err
+			}
+		}
+	}
+
+	if len(resultSlice) == 0 {
+		return nil
+	}
+
+	if singular {
+		foreign := resultSlice[0]
+		object.R.Organization = foreign
+		if foreign.R == nil {
+			foreign.R = &organizationR{}
+		}
+		foreign.R.Users = append(foreign.R.Users, object)
+		return nil
+	}
+
+	for _, local := range slice {
+		for _, foreign := range resultSlice {
+			if queries.Equal(local.OrganizationID, foreign.ID) {
+				local.R.Organization = foreign
+				if foreign.R == nil {
+					foreign.R = &organizationR{}
+				}
+				foreign.R.Users = append(foreign.R.Users, local)
+				break
+			}
+		}
+	}
+
+	return nil
+}
+
+// LoadOrganizationMembers allows an eager lookup of values, cached into the
+// loaded structs of the objects. This is for a 1-M or N-M relationship.
+func (userL) LoadOrganizationMembers(ctx context.Context, e boil.ContextExecutor, singular bool, maybeUser interface{}, mods queries.Applicator) error {
+	var slice []*User
+	var object *User
+
+	if singular {
+		var ok bool
+		object, ok = maybeUser.(*User)
+		if !ok {
+			object = new(User)
+			ok = queries.SetFromEmbeddedStruct(&object, &maybeUser)
+			if !ok {
+				return errors.New(fmt.Sprintf("failed to set %T from embedded struct %T", object, maybeUser))
+			}
+		}
+	} else {
+		s, ok := maybeUser.(*[]*User)
+		if ok {
+			slice = *s
+		} else {
+			ok = queries.SetFromEmbeddedStruct(&slice, maybeUser)
+			if !ok {
+				return errors.New(fmt.Sprintf("failed to set %T from embedded struct %T", slice, maybeUser))
+			}
+		}
+	}
+
+	args := make(map[interface{}]struct{})
+	if singular {
+		if object.R == nil {
+			object.R = &userR{}
+		}
+		args[object.ID] = struct{}{}
+	} else {
+		for _, obj := range slice {
+			if obj.R == nil {
+				obj.R = &userR{}
+			}
+			args[obj.ID] = struct{}{}
+		}
+	}
+
+	if len(args) == 0 {
+		return nil
+	}
+
+	argsSlice := make([]interface{}, len(args))
+	i := 0
+	for arg := range args {
+		argsSlice[i] = arg
+		i++
+	}
+
+	query := NewQuery(
+		qm.From(`organization_members`),
+		qm.WhereIn(`organization_members.user_id in ?`, argsSlice...),
+	)
+	if mods != nil {
+		mods.Apply(query)
+	}
+
+	results, err := query.QueryContext(ctx, e)
+	if err != nil {
+		return errors.Wrap(err, "failed to eager load organization_members")
+	}
+
+	var resultSlice []*OrganizationMember
+	if err = queries.Bind(results, &resultSlice); err != nil {
+		return errors.Wrap(err, "failed to bind eager loaded slice organization_members")
+	}
+
+	if err = results.Close(); err != nil {
+		return errors.Wrap(err, "failed to close results in eager load on organization_members")
+	}
+	if err = results.Err(); err != nil {
+		return errors.Wrap(err, "error occurred during iteration of eager loaded relations for organization_members")
+	}
+
+	if len(organizationMemberAfterSelectHooks) != 0 {
+		for _, obj := range resultSlice {
+			if err := obj.doAfterSelectHooks(ctx, e); err != nil {
+				return err
+			}
+		}
+	}
+	if singular {
+		object.R.OrganizationMembers = resultSlice
+		for _, foreign := range resultSlice {
+			if foreign.R == nil {
+				foreign.R = &organizationMemberR{}
+			}
+			foreign.R.User = object
+		}
+		return nil
+	}
+
+	for _, foreign := range resultSlice {
+		for _, local := range slice {
+			if queries.Equal(local.ID, foreign.UserID) {
+				local.R.OrganizationMembers = append(local.R.OrganizationMembers, foreign)
+				if foreign.R == nil {
+					foreign.R = &organizationMemberR{}
+				}
+				foreign.R.User = local
+				break
+			}
+		}
+	}
+
+	return nil
+}
+
+// LoadCreatedByProjects allows an eager lookup of values, cached into the
+// loaded structs of the objects. This is for a 1-M or N-M relationship.
+func (userL) LoadCreatedByProjects(ctx context.Context, e boil.ContextExecutor, singular bool, maybeUser interface{}, mods queries.Applicator) error {
+	var slice []*User
+	var object *User
+
+	if singular {
+		var ok bool
+		object, ok = maybeUser.(*User)
+		if !ok {
+			object = new(User)
+			ok = queries.SetFromEmbeddedStruct(&object, &maybeUser)
+			if !ok {
+				return errors.New(fmt.Sprintf("failed to set %T from embedded struct %T", object, maybeUser))
+			}
+		}
+	} else {
+		s, ok := maybeUser.(*[]*User)
+		if ok {
+			slice = *s
+		} else {
+			ok = queries.SetFromEmbeddedStruct(&slice, maybeUser)
+			if !ok {
+				return errors.New(fmt.Sprintf("failed to set %T from embedded struct %T", slice, maybeUser))
+			}
+		}
+	}
+
+	args := make(map[interface{}]struct{})
+	if singular {
+		if object.R == nil {
+			object.R = &userR{}
+		}
+		args[object.ID] = struct{}{}
+	} else {
+		for _, obj := range slice {
+			if obj.R == nil {
+				obj.R = &userR{}
+			}
+			args[obj.ID] = struct{}{}
+		}
+	}
+
+	if len(args) == 0 {
+		return nil
+	}
+
+	argsSlice := make([]interface{}, len(args))
+	i := 0
+	for arg := range args {
+		argsSlice[i] = arg
+		i++
+	}
+
+	query := NewQuery(
+		qm.From(`projects`),
+		qm.WhereIn(`projects.created_by in ?`, argsSlice...),
+	)
+	if mods != nil {
+		mods.Apply(query)
+	}
+
+	results, err := query.QueryContext(ctx, e)
+	if err != nil {
+		return errors.Wrap(err, "failed to eager load projects")
+	}
+
+	var resultSlice []*Project
+	if err = queries.Bind(results, &resultSlice); err != nil {
+		return errors.Wrap(err, "failed to bind eager loaded slice projects")
+	}
+
+	if err = results.Close(); err != nil {
+		return errors.Wrap(err, "failed to close results in eager load on projects")
+	}
+	if err = results.Err(); err != nil {
+		return errors.Wrap(err, "error occurred during iteration of eager loaded relations for projects")
+	}
+
+	if len(projectAfterSelectHooks) != 0 {
+		for _, obj := range resultSlice {
+			if err := obj.doAfterSelectHooks(ctx, e); err != nil {
+				return err
+			}
+		}
+	}
+	if singular {
+		object.R.CreatedByProjects = resultSlice
+		for _, foreign := range resultSlice {
+			if foreign.R == nil {
+				foreign.R = &projectR{}
+			}
+			foreign.R.CreatedByUser = object
+		}
+		return nil
+	}
+
+	for _, foreign := range resultSlice {
+		for _, local := range slice {
+			if queries.Equal(local.ID, foreign.CreatedBy) {
+				local.R.CreatedByProjects = append(local.R.CreatedByProjects, foreign)
+				if foreign.R == nil {
+					foreign.R = &projectR{}
+				}
+				foreign.R.CreatedByUser = local
+				break
+			}
+		}
+	}
+
+	return nil
+}
+
+// LoadOwnerProjects allows an eager lookup of values, cached into the
+// loaded structs of the objects. This is for a 1-M or N-M relationship.
+func (userL) LoadOwnerProjects(ctx context.Context, e boil.ContextExecutor, singular bool, maybeUser interface{}, mods queries.Applicator) error {
+	var slice []*User
+	var object *User
+
+	if singular {
+		var ok bool
+		object, ok = maybeUser.(*User)
+		if !ok {
+			object = new(User)
+			ok = queries.SetFromEmbeddedStruct(&object, &maybeUser)
+			if !ok {
+				return errors.New(fmt.Sprintf("failed to set %T from embedded struct %T", object, maybeUser))
+			}
+		}
+	} else {
+		s, ok := maybeUser.(*[]*User)
+		if ok {
+			slice = *s
+		} else {
+			ok = queries.SetFromEmbeddedStruct(&slice, maybeUser)
+			if !ok {
+				return errors.New(fmt.Sprintf("failed to set %T from embedded struct %T", slice, maybeUser))
+			}
+		}
+	}
+
+	args := make(map[interface{}]struct{})
+	if singular {
+		if object.R == nil {
+			object.R = &userR{}
+		}
+		args[object.ID] = struct{}{}
+	} else {
+		for _, obj := range slice {
+			if obj.R == nil {
+				obj.R = &userR{}
+			}
+			args[obj.ID] = struct{}{}
+		}
+	}
+
+	if len(args) == 0 {
+		return nil
+	}
+
+	argsSlice := make([]interface{}, len(args))
+	i := 0
+	for arg := range args {
+		argsSlice[i] = arg
+		i++
+	}
+
+	query := NewQuery(
+		qm.From(`projects`),
+		qm.WhereIn(`projects.owner_id in ?`, argsSlice...),
+	)
+	if mods != nil {
+		mods.Apply(query)
+	}
+
+	results, err := query.QueryContext(ctx, e)
+	if err != nil {
+		return errors.Wrap(err, "failed to eager load projects")
+	}
+
+	var resultSlice []*Project
+	if err = queries.Bind(results, &resultSlice); err != nil {
+		return errors.Wrap(err, "failed to bind eager loaded slice projects")
+	}
+
+	if err = results.Close(); err != nil {
+		return errors.Wrap(err, "failed to close results in eager load on projects")
+	}
+	if err = results.Err(); err != nil {
+		return errors.Wrap(err, "error occurred during iteration of eager loaded relations for projects")
+	}
+
+	if len(projectAfterSelectHooks) != 0 {
+		for _, obj := range resultSlice {
+			if err := obj.doAfterSelectHooks(ctx, e); err != nil {
+				return err
+			}
+		}
+	}
+	if singular {
+		object.R.OwnerProjects = resultSlice
+		for _, foreign := range resultSlice {
+			if foreign.R == nil {
+				foreign.R = &projectR{}
+			}
+			foreign.R.Owner = object
+		}
+		return nil
+	}
+
+	for _, foreign := range resultSlice {
+		for _, local := range slice {
+			if queries.Equal(local.ID, foreign.OwnerID) {
+				local.R.OwnerProjects = append(local.R.OwnerProjects, foreign)
+				if foreign.R == nil {
+					foreign.R = &projectR{}
+				}
+				foreign.R.Owner = local
+				break
+			}
+		}
+	}
+
+	return nil
+}
+
+// SetOrganization of the user to the related item.
+// Sets o.R.Organization to related.
+// Adds o to related.R.Users.
+func (o *User) SetOrganization(ctx context.Context, exec boil.ContextExecutor, insert bool, related *Organization) error {
+	var err error
+	if insert {
+		if err = related.Insert(ctx, exec, boil.Infer()); err != nil {
+			return errors.Wrap(err, "failed to insert into foreign table")
+		}
+	}
+
+	updateQuery := fmt.Sprintf(
+		"UPDATE \"users\" SET %s WHERE %s",
+		strmangle.SetParamNames("\"", "\"", 1, []string{"organization_id"}),
+		strmangle.WhereClause("\"", "\"", 2, userPrimaryKeyColumns),
+	)
+	values := []interface{}{related.ID, o.ID}
+
+	if boil.IsDebug(ctx) {
+		writer := boil.DebugWriterFrom(ctx)
+		fmt.Fprintln(writer, updateQuery)
+		fmt.Fprintln(writer, values)
+	}
+	if _, err = exec.ExecContext(ctx, updateQuery, values...); err != nil {
+		return errors.Wrap(err, "failed to update local table")
+	}
+
+	queries.Assign(&o.OrganizationID, related.ID)
+	if o.R == nil {
+		o.R = &userR{
+			Organization: related,
+		}
+	} else {
+		o.R.Organization = related
+	}
+
+	if related.R == nil {
+		related.R = &organizationR{
+			Users: UserSlice{o},
+		}
+	} else {
+		related.R.Users = append(related.R.Users, o)
+	}
+
+	return nil
+}
+
+// RemoveOrganization relationship.
+// Sets o.R.Organization to nil.
+// Removes o from all passed in related items' relationships struct.
+func (o *User) RemoveOrganization(ctx context.Context, exec boil.ContextExecutor, related *Organization) error {
+	var err error
+
+	queries.SetScanner(&o.OrganizationID, nil)
+	if _, err = o.Update(ctx, exec, boil.Whitelist("organization_id")); err != nil {
+		return errors.Wrap(err, "failed to update local table")
+	}
+
+	if o.R != nil {
+		o.R.Organization = nil
+	}
+	if related == nil || related.R == nil {
+		return nil
+	}
+
+	for i, ri := range related.R.Users {
+		if queries.Equal(o.OrganizationID, ri.OrganizationID) {
+			continue
+		}
+
+		ln := len(related.R.Users)
+		if ln > 1 && i < ln-1 {
+			related.R.Users[i] = related.R.Users[ln-1]
+		}
+		related.R.Users = related.R.Users[:ln-1]
+		break
+	}
+	return nil
+}
+
+// AddOrganizationMembers adds the given related objects to the existing relationships
+// of the user, optionally inserting them as new records.
+// Appends related to o.R.OrganizationMembers.
+// Sets related.R.User appropriately.
+func (o *User) AddOrganizationMembers(ctx context.Context, exec boil.ContextExecutor, insert bool, related ...*OrganizationMember) error {
+	var err error
+	for _, rel := range related {
+		if insert {
+			queries.Assign(&rel.UserID, o.ID)
+			if err = rel.Insert(ctx, exec, boil.Infer()); err != nil {
+				return errors.Wrap(err, "failed to insert into foreign table")
+			}
+		} else {
+			updateQuery := fmt.Sprintf(
+				"UPDATE \"organization_members\" SET %s WHERE %s",
+				strmangle.SetParamNames("\"", "\"", 1, []string{"user_id"}),
+				strmangle.WhereClause("\"", "\"", 2, organizationMemberPrimaryKeyColumns),
+			)
+			values := []interface{}{o.ID, rel.ID}
+
+			if boil.IsDebug(ctx) {
+				writer := boil.DebugWriterFrom(ctx)
+				fmt.Fprintln(writer, updateQuery)
+				fmt.Fprintln(writer, values)
+			}
+			if _, err = exec.ExecContext(ctx, updateQuery, values...); err != nil {
+				return errors.Wrap(err, "failed to update foreign table")
+			}
+
+			queries.Assign(&rel.UserID, o.ID)
+		}
+	}
+
+	if o.R == nil {
+		o.R = &userR{
+			OrganizationMembers: related,
+		}
+	} else {
+		o.R.OrganizationMembers = append(o.R.OrganizationMembers, related...)
+	}
+
+	for _, rel := range related {
+		if rel.R == nil {
+			rel.R = &organizationMemberR{
+				User: o,
+			}
+		} else {
+			rel.R.User = o
+		}
+	}
+	return nil
+}
+
+// SetOrganizationMembers removes all previously related items of the
+// user replacing them completely with the passed
+// in related items, optionally inserting them as new records.
+// Sets o.R.User's OrganizationMembers accordingly.
+// Replaces o.R.OrganizationMembers with related.
+// Sets related.R.User's OrganizationMembers accordingly.
+func (o *User) SetOrganizationMembers(ctx context.Context, exec boil.ContextExecutor, insert bool, related ...*OrganizationMember) error {
+	query := "update \"organization_members\" set \"user_id\" = null where \"user_id\" = $1"
+	values := []interface{}{o.ID}
+	if boil.IsDebug(ctx) {
+		writer := boil.DebugWriterFrom(ctx)
+		fmt.Fprintln(writer, query)
+		fmt.Fprintln(writer, values)
+	}
+	_, err := exec.ExecContext(ctx, query, values...)
+	if err != nil {
+		return errors.Wrap(err, "failed to remove relationships before set")
+	}
+
+	if o.R != nil {
+		for _, rel := range o.R.OrganizationMembers {
+			queries.SetScanner(&rel.UserID, nil)
+			if rel.R == nil {
+				continue
+			}
+
+			rel.R.User = nil
+		}
+		o.R.OrganizationMembers = nil
+	}
+
+	return o.AddOrganizationMembers(ctx, exec, insert, related...)
+}
+
+// RemoveOrganizationMembers relationships from objects passed in.
+// Removes related items from R.OrganizationMembers (uses pointer comparison, removal does not keep order)
+// Sets related.R.User.
+func (o *User) RemoveOrganizationMembers(ctx context.Context, exec boil.ContextExecutor, related ...*OrganizationMember) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	for _, rel := range related {
+		queries.SetScanner(&rel.UserID, nil)
+		if rel.R != nil {
+			rel.R.User = nil
+		}
+		if _, err = rel.Update(ctx, exec, boil.Whitelist("user_id")); err != nil {
+			return err
+		}
+	}
+	if o.R == nil {
+		return nil
+	}
+
+	for _, rel := range related {
+		for i, ri := range o.R.OrganizationMembers {
+			if rel != ri {
+				continue
+			}
+
+			ln := len(o.R.OrganizationMembers)
+			if ln > 1 && i < ln-1 {
+				o.R.OrganizationMembers[i] = o.R.OrganizationMembers[ln-1]
+			}
+			o.R.OrganizationMembers = o.R.OrganizationMembers[:ln-1]
+			break
+		}
+	}
+
+	return nil
+}
+
+// AddCreatedByProjects adds the given related objects to the existing relationships
+// of the user, optionally inserting them as new records.
+// Appends related to o.R.CreatedByProjects.
+// Sets related.R.CreatedByUser appropriately.
+func (o *User) AddCreatedByProjects(ctx context.Context, exec boil.ContextExecutor, insert bool, related ...*Project) error {
+	var err error
+	for _, rel := range related {
+		if insert {
+			queries.Assign(&rel.CreatedBy, o.ID)
+			if err = rel.Insert(ctx, exec, boil.Infer()); err != nil {
+				return errors.Wrap(err, "failed to insert into foreign table")
+			}
+		} else {
+			updateQuery := fmt.Sprintf(
+				"UPDATE \"projects\" SET %s WHERE %s",
+				strmangle.SetParamNames("\"", "\"", 1, []string{"created_by"}),
+				strmangle.WhereClause("\"", "\"", 2, projectPrimaryKeyColumns),
+			)
+			values := []interface{}{o.ID, rel.ID}
+
+			if boil.IsDebug(ctx) {
+				writer := boil.DebugWriterFrom(ctx)
+				fmt.Fprintln(writer, updateQuery)
+				fmt.Fprintln(writer, values)
+			}
+			if _, err = exec.ExecContext(ctx, updateQuery, values...); err != nil {
+				return errors.Wrap(err, "failed to update foreign table")
+			}
+
+			queries.Assign(&rel.CreatedBy, o.ID)
+		}
+	}
+
+	if o.R == nil {
+		o.R = &userR{
+			CreatedByProjects: related,
+		}
+	} else {
+		o.R.CreatedByProjects = append(o.R.CreatedByProjects, related...)
+	}
+
+	for _, rel := range related {
+		if rel.R == nil {
+			rel.R = &projectR{
+				CreatedByUser: o,
+			}
+		} else {
+			rel.R.CreatedByUser = o
+		}
+	}
+	return nil
+}
+
+// SetCreatedByProjects removes all previously related items of the
+// user replacing them completely with the passed
+// in related items, optionally inserting them as new records.
+// Sets o.R.CreatedByUser's CreatedByProjects accordingly.
+// Replaces o.R.CreatedByProjects with related.
+// Sets related.R.CreatedByUser's CreatedByProjects accordingly.
+func (o *User) SetCreatedByProjects(ctx context.Context, exec boil.ContextExecutor, insert bool, related ...*Project) error {
+	query := "update \"projects\" set \"created_by\" = null where \"created_by\" = $1"
+	values := []interface{}{o.ID}
+	if boil.IsDebug(ctx) {
+		writer := boil.DebugWriterFrom(ctx)
+		fmt.Fprintln(writer, query)
+		fmt.Fprintln(writer, values)
+	}
+	_, err := exec.ExecContext(ctx, query, values...)
+	if err != nil {
+		return errors.Wrap(err, "failed to remove relationships before set")
+	}
+
+	if o.R != nil {
+		for _, rel := range o.R.CreatedByProjects {
+			queries.SetScanner(&rel.CreatedBy, nil)
+			if rel.R == nil {
+				continue
+			}
+
+			rel.R.CreatedByUser = nil
+		}
+		o.R.CreatedByProjects = nil
+	}
+
+	return o.AddCreatedByProjects(ctx, exec, insert, related...)
+}
+
+// RemoveCreatedByProjects relationships from objects passed in.
+// Removes related items from R.CreatedByProjects (uses pointer comparison, removal does not keep order)
+// Sets related.R.CreatedByUser.
+func (o *User) RemoveCreatedByProjects(ctx context.Context, exec boil.ContextExecutor, related ...*Project) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	for _, rel := range related {
+		queries.SetScanner(&rel.CreatedBy, nil)
+		if rel.R != nil {
+			rel.R.CreatedByUser = nil
+		}
+		if _, err = rel.Update(ctx, exec, boil.Whitelist("created_by")); err != nil {
+			return err
+		}
+	}
+	if o.R == nil {
+		return nil
+	}
+
+	for _, rel := range related {
+		for i, ri := range o.R.CreatedByProjects {
+			if rel != ri {
+				continue
+			}
+
+			ln := len(o.R.CreatedByProjects)
+			if ln > 1 && i < ln-1 {
+				o.R.CreatedByProjects[i] = o.R.CreatedByProjects[ln-1]
+			}
+			o.R.CreatedByProjects = o.R.CreatedByProjects[:ln-1]
+			break
+		}
+	}
+
+	return nil
+}
+
+// AddOwnerProjects adds the given related objects to the existing relationships
+// of the user, optionally inserting them as new records.
+// Appends related to o.R.OwnerProjects.
+// Sets related.R.Owner appropriately.
+func (o *User) AddOwnerProjects(ctx context.Context, exec boil.ContextExecutor, insert bool, related ...*Project) error {
+	var err error
+	for _, rel := range related {
+		if insert {
+			queries.Assign(&rel.OwnerID, o.ID)
+			if err = rel.Insert(ctx, exec, boil.Infer()); err != nil {
+				return errors.Wrap(err, "failed to insert into foreign table")
+			}
+		} else {
+			updateQuery := fmt.Sprintf(
+				"UPDATE \"projects\" SET %s WHERE %s",
+				strmangle.SetParamNames("\"", "\"", 1, []string{"owner_id"}),
+				strmangle.WhereClause("\"", "\"", 2, projectPrimaryKeyColumns),
+			)
+			values := []interface{}{o.ID, rel.ID}
+
+			if boil.IsDebug(ctx) {
+				writer := boil.DebugWriterFrom(ctx)
+				fmt.Fprintln(writer, updateQuery)
+				fmt.Fprintln(writer, values)
+			}
+			if _, err = exec.ExecContext(ctx, updateQuery, values...); err != nil {
+				return errors.Wrap(err, "failed to update foreign table")
+			}
+
+			queries.Assign(&rel.OwnerID, o.ID)
+		}
+	}
+
+	if o.R == nil {
+		o.R = &userR{
+			OwnerProjects: related,
+		}
+	} else {
+		o.R.OwnerProjects = append(o.R.OwnerProjects, related...)
+	}
+
+	for _, rel := range related {
+		if rel.R == nil {
+			rel.R = &projectR{
+				Owner: o,
+			}
+		} else {
+			rel.R.Owner = o
+		}
+	}
+	return nil
+}
+
+// SetOwnerProjects removes all previously related items of the
+// user replacing them completely with the passed
+// in related items, optionally inserting them as new records.
+// Sets o.R.Owner's OwnerProjects accordingly.
+// Replaces o.R.OwnerProjects with related.
+// Sets related.R.Owner's OwnerProjects accordingly.
+func (o *User) SetOwnerProjects(ctx context.Context, exec boil.ContextExecutor, insert bool, related ...*Project) error {
+	query := "update \"projects\" set \"owner_id\" = null where \"owner_id\" = $1"
+	values := []interface{}{o.ID}
+	if boil.IsDebug(ctx) {
+		writer := boil.DebugWriterFrom(ctx)
+		fmt.Fprintln(writer, query)
+		fmt.Fprintln(writer, values)
+	}
+	_, err := exec.ExecContext(ctx, query, values...)
+	if err != nil {
+		return errors.Wrap(err, "failed to remove relationships before set")
+	}
+
+	if o.R != nil {
+		for _, rel := range o.R.OwnerProjects {
+			queries.SetScanner(&rel.OwnerID, nil)
+			if rel.R == nil {
+				continue
+			}
+
+			rel.R.Owner = nil
+		}
+		o.R.OwnerProjects = nil
+	}
+
+	return o.AddOwnerProjects(ctx, exec, insert, related...)
+}
+
+// RemoveOwnerProjects relationships from objects passed in.
+// Removes related items from R.OwnerProjects (uses pointer comparison, removal does not keep order)
+// Sets related.R.Owner.
+func (o *User) RemoveOwnerProjects(ctx context.Context, exec boil.ContextExecutor, related ...*Project) error {
+	if len(related) == 0 {
+		return nil
+	}
+
+	var err error
+	for _, rel := range related {
+		queries.SetScanner(&rel.OwnerID, nil)
+		if rel.R != nil {
+			rel.R.Owner = nil
+		}
+		if _, err = rel.Update(ctx, exec, boil.Whitelist("owner_id")); err != nil {
+			return err
+		}
+	}
+	if o.R == nil {
+		return nil
+	}
+
+	for _, rel := range related {
+		for i, ri := range o.R.OwnerProjects {
+			if rel != ri {
+				continue
+			}
+
+			ln := len(o.R.OwnerProjects)
+			if ln > 1 && i < ln-1 {
+				o.R.OwnerProjects[i] = o.R.OwnerProjects[ln-1]
+			}
+			o.R.OwnerProjects = o.R.OwnerProjects[:ln-1]
+			break
+		}
+	}
+
+	return nil
+}
+
 // Users retrieves all the records using an executor.
 func Users(mods ...qm.QueryMod) userQuery {
 	mods = append(mods, qm.From("\"users\""))
@@ -503,6 +1552,13 @@ func (o *User) Insert(ctx context.Context, exec boil.ContextExecutor, columns bo
 	}
 
 	var err error
+	if !boil.TimestampsAreSkipped(ctx) {
+		currTime := time.Now().In(boil.GetLocation())
+
+		if queries.MustTime(o.CreatedAt).IsZero() {
+			queries.SetScanner(&o.CreatedAt, currTime)
+		}
+	}
 
 	if err := o.doBeforeInsertHooks(ctx, exec); err != nil {
 		return err
@@ -707,6 +1763,13 @@ func (o UserSlice) UpdateAll(ctx context.Context, exec boil.ContextExecutor, col
 func (o *User) Upsert(ctx context.Context, exec boil.ContextExecutor, updateOnConflict bool, conflictColumns []string, updateColumns, insertColumns boil.Columns, opts ...UpsertOptionFunc) error {
 	if o == nil {
 		return errors.New("models: no users provided for upsert")
+	}
+	if !boil.TimestampsAreSkipped(ctx) {
+		currTime := time.Now().In(boil.GetLocation())
+
+		if queries.MustTime(o.CreatedAt).IsZero() {
+			queries.SetScanner(&o.CreatedAt, currTime)
+		}
 	}
 
 	if err := o.doBeforeUpsertHooks(ctx, exec); err != nil {

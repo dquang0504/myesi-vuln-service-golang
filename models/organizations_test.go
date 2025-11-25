@@ -21,24 +21,24 @@ var (
 	_ = queries.Equal
 )
 
-func testUsers(t *testing.T) {
+func testOrganizations(t *testing.T) {
 	t.Parallel()
 
-	query := Users()
+	query := Organizations()
 
 	if query.Query == nil {
 		t.Error("expected a query, got nothing")
 	}
 }
 
-func testUsersDelete(t *testing.T) {
+func testOrganizationsDelete(t *testing.T) {
 	t.Parallel()
 
 	seed := randomize.NewSeed()
 	var err error
-	o := &User{}
-	if err = randomize.Struct(seed, o, userDBTypes, true, userColumnsWithDefault...); err != nil {
-		t.Errorf("Unable to randomize User struct: %s", err)
+	o := &Organization{}
+	if err = randomize.Struct(seed, o, organizationDBTypes, true, organizationColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize Organization struct: %s", err)
 	}
 
 	ctx := context.Background()
@@ -54,7 +54,7 @@ func testUsersDelete(t *testing.T) {
 		t.Error("should only have deleted one row, but affected:", rowsAff)
 	}
 
-	count, err := Users().Count(ctx, tx)
+	count, err := Organizations().Count(ctx, tx)
 	if err != nil {
 		t.Error(err)
 	}
@@ -64,14 +64,14 @@ func testUsersDelete(t *testing.T) {
 	}
 }
 
-func testUsersQueryDeleteAll(t *testing.T) {
+func testOrganizationsQueryDeleteAll(t *testing.T) {
 	t.Parallel()
 
 	seed := randomize.NewSeed()
 	var err error
-	o := &User{}
-	if err = randomize.Struct(seed, o, userDBTypes, true, userColumnsWithDefault...); err != nil {
-		t.Errorf("Unable to randomize User struct: %s", err)
+	o := &Organization{}
+	if err = randomize.Struct(seed, o, organizationDBTypes, true, organizationColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize Organization struct: %s", err)
 	}
 
 	ctx := context.Background()
@@ -81,13 +81,13 @@ func testUsersQueryDeleteAll(t *testing.T) {
 		t.Error(err)
 	}
 
-	if rowsAff, err := Users().DeleteAll(ctx, tx); err != nil {
+	if rowsAff, err := Organizations().DeleteAll(ctx, tx); err != nil {
 		t.Error(err)
 	} else if rowsAff != 1 {
 		t.Error("should only have deleted one row, but affected:", rowsAff)
 	}
 
-	count, err := Users().Count(ctx, tx)
+	count, err := Organizations().Count(ctx, tx)
 	if err != nil {
 		t.Error(err)
 	}
@@ -97,14 +97,14 @@ func testUsersQueryDeleteAll(t *testing.T) {
 	}
 }
 
-func testUsersSliceDeleteAll(t *testing.T) {
+func testOrganizationsSliceDeleteAll(t *testing.T) {
 	t.Parallel()
 
 	seed := randomize.NewSeed()
 	var err error
-	o := &User{}
-	if err = randomize.Struct(seed, o, userDBTypes, true, userColumnsWithDefault...); err != nil {
-		t.Errorf("Unable to randomize User struct: %s", err)
+	o := &Organization{}
+	if err = randomize.Struct(seed, o, organizationDBTypes, true, organizationColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize Organization struct: %s", err)
 	}
 
 	ctx := context.Background()
@@ -114,7 +114,7 @@ func testUsersSliceDeleteAll(t *testing.T) {
 		t.Error(err)
 	}
 
-	slice := UserSlice{o}
+	slice := OrganizationSlice{o}
 
 	if rowsAff, err := slice.DeleteAll(ctx, tx); err != nil {
 		t.Error(err)
@@ -122,7 +122,7 @@ func testUsersSliceDeleteAll(t *testing.T) {
 		t.Error("should only have deleted one row, but affected:", rowsAff)
 	}
 
-	count, err := Users().Count(ctx, tx)
+	count, err := Organizations().Count(ctx, tx)
 	if err != nil {
 		t.Error(err)
 	}
@@ -132,14 +132,14 @@ func testUsersSliceDeleteAll(t *testing.T) {
 	}
 }
 
-func testUsersExists(t *testing.T) {
+func testOrganizationsExists(t *testing.T) {
 	t.Parallel()
 
 	seed := randomize.NewSeed()
 	var err error
-	o := &User{}
-	if err = randomize.Struct(seed, o, userDBTypes, true, userColumnsWithDefault...); err != nil {
-		t.Errorf("Unable to randomize User struct: %s", err)
+	o := &Organization{}
+	if err = randomize.Struct(seed, o, organizationDBTypes, true, organizationColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize Organization struct: %s", err)
 	}
 
 	ctx := context.Background()
@@ -149,23 +149,23 @@ func testUsersExists(t *testing.T) {
 		t.Error(err)
 	}
 
-	e, err := UserExists(ctx, tx, o.ID)
+	e, err := OrganizationExists(ctx, tx, o.ID)
 	if err != nil {
-		t.Errorf("Unable to check if User exists: %s", err)
+		t.Errorf("Unable to check if Organization exists: %s", err)
 	}
 	if !e {
-		t.Errorf("Expected UserExists to return true, but got false.")
+		t.Errorf("Expected OrganizationExists to return true, but got false.")
 	}
 }
 
-func testUsersFind(t *testing.T) {
+func testOrganizationsFind(t *testing.T) {
 	t.Parallel()
 
 	seed := randomize.NewSeed()
 	var err error
-	o := &User{}
-	if err = randomize.Struct(seed, o, userDBTypes, true, userColumnsWithDefault...); err != nil {
-		t.Errorf("Unable to randomize User struct: %s", err)
+	o := &Organization{}
+	if err = randomize.Struct(seed, o, organizationDBTypes, true, organizationColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize Organization struct: %s", err)
 	}
 
 	ctx := context.Background()
@@ -175,24 +175,24 @@ func testUsersFind(t *testing.T) {
 		t.Error(err)
 	}
 
-	userFound, err := FindUser(ctx, tx, o.ID)
+	organizationFound, err := FindOrganization(ctx, tx, o.ID)
 	if err != nil {
 		t.Error(err)
 	}
 
-	if userFound == nil {
+	if organizationFound == nil {
 		t.Error("want a record, got nil")
 	}
 }
 
-func testUsersBind(t *testing.T) {
+func testOrganizationsBind(t *testing.T) {
 	t.Parallel()
 
 	seed := randomize.NewSeed()
 	var err error
-	o := &User{}
-	if err = randomize.Struct(seed, o, userDBTypes, true, userColumnsWithDefault...); err != nil {
-		t.Errorf("Unable to randomize User struct: %s", err)
+	o := &Organization{}
+	if err = randomize.Struct(seed, o, organizationDBTypes, true, organizationColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize Organization struct: %s", err)
 	}
 
 	ctx := context.Background()
@@ -202,19 +202,19 @@ func testUsersBind(t *testing.T) {
 		t.Error(err)
 	}
 
-	if err = Users().Bind(ctx, tx, o); err != nil {
+	if err = Organizations().Bind(ctx, tx, o); err != nil {
 		t.Error(err)
 	}
 }
 
-func testUsersOne(t *testing.T) {
+func testOrganizationsOne(t *testing.T) {
 	t.Parallel()
 
 	seed := randomize.NewSeed()
 	var err error
-	o := &User{}
-	if err = randomize.Struct(seed, o, userDBTypes, true, userColumnsWithDefault...); err != nil {
-		t.Errorf("Unable to randomize User struct: %s", err)
+	o := &Organization{}
+	if err = randomize.Struct(seed, o, organizationDBTypes, true, organizationColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize Organization struct: %s", err)
 	}
 
 	ctx := context.Background()
@@ -224,38 +224,38 @@ func testUsersOne(t *testing.T) {
 		t.Error(err)
 	}
 
-	if x, err := Users().One(ctx, tx); err != nil {
+	if x, err := Organizations().One(ctx, tx); err != nil {
 		t.Error(err)
 	} else if x == nil {
 		t.Error("expected to get a non nil record")
 	}
 }
 
-func testUsersAll(t *testing.T) {
+func testOrganizationsAll(t *testing.T) {
 	t.Parallel()
 
 	seed := randomize.NewSeed()
 	var err error
-	userOne := &User{}
-	userTwo := &User{}
-	if err = randomize.Struct(seed, userOne, userDBTypes, false, userColumnsWithDefault...); err != nil {
-		t.Errorf("Unable to randomize User struct: %s", err)
+	organizationOne := &Organization{}
+	organizationTwo := &Organization{}
+	if err = randomize.Struct(seed, organizationOne, organizationDBTypes, false, organizationColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize Organization struct: %s", err)
 	}
-	if err = randomize.Struct(seed, userTwo, userDBTypes, false, userColumnsWithDefault...); err != nil {
-		t.Errorf("Unable to randomize User struct: %s", err)
+	if err = randomize.Struct(seed, organizationTwo, organizationDBTypes, false, organizationColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize Organization struct: %s", err)
 	}
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
-	if err = userOne.Insert(ctx, tx, boil.Infer()); err != nil {
+	if err = organizationOne.Insert(ctx, tx, boil.Infer()); err != nil {
 		t.Error(err)
 	}
-	if err = userTwo.Insert(ctx, tx, boil.Infer()); err != nil {
+	if err = organizationTwo.Insert(ctx, tx, boil.Infer()); err != nil {
 		t.Error(err)
 	}
 
-	slice, err := Users().All(ctx, tx)
+	slice, err := Organizations().All(ctx, tx)
 	if err != nil {
 		t.Error(err)
 	}
@@ -265,31 +265,31 @@ func testUsersAll(t *testing.T) {
 	}
 }
 
-func testUsersCount(t *testing.T) {
+func testOrganizationsCount(t *testing.T) {
 	t.Parallel()
 
 	var err error
 	seed := randomize.NewSeed()
-	userOne := &User{}
-	userTwo := &User{}
-	if err = randomize.Struct(seed, userOne, userDBTypes, false, userColumnsWithDefault...); err != nil {
-		t.Errorf("Unable to randomize User struct: %s", err)
+	organizationOne := &Organization{}
+	organizationTwo := &Organization{}
+	if err = randomize.Struct(seed, organizationOne, organizationDBTypes, false, organizationColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize Organization struct: %s", err)
 	}
-	if err = randomize.Struct(seed, userTwo, userDBTypes, false, userColumnsWithDefault...); err != nil {
-		t.Errorf("Unable to randomize User struct: %s", err)
+	if err = randomize.Struct(seed, organizationTwo, organizationDBTypes, false, organizationColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize Organization struct: %s", err)
 	}
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
-	if err = userOne.Insert(ctx, tx, boil.Infer()); err != nil {
+	if err = organizationOne.Insert(ctx, tx, boil.Infer()); err != nil {
 		t.Error(err)
 	}
-	if err = userTwo.Insert(ctx, tx, boil.Infer()); err != nil {
+	if err = organizationTwo.Insert(ctx, tx, boil.Infer()); err != nil {
 		t.Error(err)
 	}
 
-	count, err := Users().Count(ctx, tx)
+	count, err := Organizations().Count(ctx, tx)
 	if err != nil {
 		t.Error(err)
 	}
@@ -299,155 +299,155 @@ func testUsersCount(t *testing.T) {
 	}
 }
 
-func userBeforeInsertHook(ctx context.Context, e boil.ContextExecutor, o *User) error {
-	*o = User{}
+func organizationBeforeInsertHook(ctx context.Context, e boil.ContextExecutor, o *Organization) error {
+	*o = Organization{}
 	return nil
 }
 
-func userAfterInsertHook(ctx context.Context, e boil.ContextExecutor, o *User) error {
-	*o = User{}
+func organizationAfterInsertHook(ctx context.Context, e boil.ContextExecutor, o *Organization) error {
+	*o = Organization{}
 	return nil
 }
 
-func userAfterSelectHook(ctx context.Context, e boil.ContextExecutor, o *User) error {
-	*o = User{}
+func organizationAfterSelectHook(ctx context.Context, e boil.ContextExecutor, o *Organization) error {
+	*o = Organization{}
 	return nil
 }
 
-func userBeforeUpdateHook(ctx context.Context, e boil.ContextExecutor, o *User) error {
-	*o = User{}
+func organizationBeforeUpdateHook(ctx context.Context, e boil.ContextExecutor, o *Organization) error {
+	*o = Organization{}
 	return nil
 }
 
-func userAfterUpdateHook(ctx context.Context, e boil.ContextExecutor, o *User) error {
-	*o = User{}
+func organizationAfterUpdateHook(ctx context.Context, e boil.ContextExecutor, o *Organization) error {
+	*o = Organization{}
 	return nil
 }
 
-func userBeforeDeleteHook(ctx context.Context, e boil.ContextExecutor, o *User) error {
-	*o = User{}
+func organizationBeforeDeleteHook(ctx context.Context, e boil.ContextExecutor, o *Organization) error {
+	*o = Organization{}
 	return nil
 }
 
-func userAfterDeleteHook(ctx context.Context, e boil.ContextExecutor, o *User) error {
-	*o = User{}
+func organizationAfterDeleteHook(ctx context.Context, e boil.ContextExecutor, o *Organization) error {
+	*o = Organization{}
 	return nil
 }
 
-func userBeforeUpsertHook(ctx context.Context, e boil.ContextExecutor, o *User) error {
-	*o = User{}
+func organizationBeforeUpsertHook(ctx context.Context, e boil.ContextExecutor, o *Organization) error {
+	*o = Organization{}
 	return nil
 }
 
-func userAfterUpsertHook(ctx context.Context, e boil.ContextExecutor, o *User) error {
-	*o = User{}
+func organizationAfterUpsertHook(ctx context.Context, e boil.ContextExecutor, o *Organization) error {
+	*o = Organization{}
 	return nil
 }
 
-func testUsersHooks(t *testing.T) {
+func testOrganizationsHooks(t *testing.T) {
 	t.Parallel()
 
 	var err error
 
 	ctx := context.Background()
-	empty := &User{}
-	o := &User{}
+	empty := &Organization{}
+	o := &Organization{}
 
 	seed := randomize.NewSeed()
-	if err = randomize.Struct(seed, o, userDBTypes, false); err != nil {
-		t.Errorf("Unable to randomize User object: %s", err)
+	if err = randomize.Struct(seed, o, organizationDBTypes, false); err != nil {
+		t.Errorf("Unable to randomize Organization object: %s", err)
 	}
 
-	AddUserHook(boil.BeforeInsertHook, userBeforeInsertHook)
+	AddOrganizationHook(boil.BeforeInsertHook, organizationBeforeInsertHook)
 	if err = o.doBeforeInsertHooks(ctx, nil); err != nil {
 		t.Errorf("Unable to execute doBeforeInsertHooks: %s", err)
 	}
 	if !reflect.DeepEqual(o, empty) {
 		t.Errorf("Expected BeforeInsertHook function to empty object, but got: %#v", o)
 	}
-	userBeforeInsertHooks = []UserHook{}
+	organizationBeforeInsertHooks = []OrganizationHook{}
 
-	AddUserHook(boil.AfterInsertHook, userAfterInsertHook)
+	AddOrganizationHook(boil.AfterInsertHook, organizationAfterInsertHook)
 	if err = o.doAfterInsertHooks(ctx, nil); err != nil {
 		t.Errorf("Unable to execute doAfterInsertHooks: %s", err)
 	}
 	if !reflect.DeepEqual(o, empty) {
 		t.Errorf("Expected AfterInsertHook function to empty object, but got: %#v", o)
 	}
-	userAfterInsertHooks = []UserHook{}
+	organizationAfterInsertHooks = []OrganizationHook{}
 
-	AddUserHook(boil.AfterSelectHook, userAfterSelectHook)
+	AddOrganizationHook(boil.AfterSelectHook, organizationAfterSelectHook)
 	if err = o.doAfterSelectHooks(ctx, nil); err != nil {
 		t.Errorf("Unable to execute doAfterSelectHooks: %s", err)
 	}
 	if !reflect.DeepEqual(o, empty) {
 		t.Errorf("Expected AfterSelectHook function to empty object, but got: %#v", o)
 	}
-	userAfterSelectHooks = []UserHook{}
+	organizationAfterSelectHooks = []OrganizationHook{}
 
-	AddUserHook(boil.BeforeUpdateHook, userBeforeUpdateHook)
+	AddOrganizationHook(boil.BeforeUpdateHook, organizationBeforeUpdateHook)
 	if err = o.doBeforeUpdateHooks(ctx, nil); err != nil {
 		t.Errorf("Unable to execute doBeforeUpdateHooks: %s", err)
 	}
 	if !reflect.DeepEqual(o, empty) {
 		t.Errorf("Expected BeforeUpdateHook function to empty object, but got: %#v", o)
 	}
-	userBeforeUpdateHooks = []UserHook{}
+	organizationBeforeUpdateHooks = []OrganizationHook{}
 
-	AddUserHook(boil.AfterUpdateHook, userAfterUpdateHook)
+	AddOrganizationHook(boil.AfterUpdateHook, organizationAfterUpdateHook)
 	if err = o.doAfterUpdateHooks(ctx, nil); err != nil {
 		t.Errorf("Unable to execute doAfterUpdateHooks: %s", err)
 	}
 	if !reflect.DeepEqual(o, empty) {
 		t.Errorf("Expected AfterUpdateHook function to empty object, but got: %#v", o)
 	}
-	userAfterUpdateHooks = []UserHook{}
+	organizationAfterUpdateHooks = []OrganizationHook{}
 
-	AddUserHook(boil.BeforeDeleteHook, userBeforeDeleteHook)
+	AddOrganizationHook(boil.BeforeDeleteHook, organizationBeforeDeleteHook)
 	if err = o.doBeforeDeleteHooks(ctx, nil); err != nil {
 		t.Errorf("Unable to execute doBeforeDeleteHooks: %s", err)
 	}
 	if !reflect.DeepEqual(o, empty) {
 		t.Errorf("Expected BeforeDeleteHook function to empty object, but got: %#v", o)
 	}
-	userBeforeDeleteHooks = []UserHook{}
+	organizationBeforeDeleteHooks = []OrganizationHook{}
 
-	AddUserHook(boil.AfterDeleteHook, userAfterDeleteHook)
+	AddOrganizationHook(boil.AfterDeleteHook, organizationAfterDeleteHook)
 	if err = o.doAfterDeleteHooks(ctx, nil); err != nil {
 		t.Errorf("Unable to execute doAfterDeleteHooks: %s", err)
 	}
 	if !reflect.DeepEqual(o, empty) {
 		t.Errorf("Expected AfterDeleteHook function to empty object, but got: %#v", o)
 	}
-	userAfterDeleteHooks = []UserHook{}
+	organizationAfterDeleteHooks = []OrganizationHook{}
 
-	AddUserHook(boil.BeforeUpsertHook, userBeforeUpsertHook)
+	AddOrganizationHook(boil.BeforeUpsertHook, organizationBeforeUpsertHook)
 	if err = o.doBeforeUpsertHooks(ctx, nil); err != nil {
 		t.Errorf("Unable to execute doBeforeUpsertHooks: %s", err)
 	}
 	if !reflect.DeepEqual(o, empty) {
 		t.Errorf("Expected BeforeUpsertHook function to empty object, but got: %#v", o)
 	}
-	userBeforeUpsertHooks = []UserHook{}
+	organizationBeforeUpsertHooks = []OrganizationHook{}
 
-	AddUserHook(boil.AfterUpsertHook, userAfterUpsertHook)
+	AddOrganizationHook(boil.AfterUpsertHook, organizationAfterUpsertHook)
 	if err = o.doAfterUpsertHooks(ctx, nil); err != nil {
 		t.Errorf("Unable to execute doAfterUpsertHooks: %s", err)
 	}
 	if !reflect.DeepEqual(o, empty) {
 		t.Errorf("Expected AfterUpsertHook function to empty object, but got: %#v", o)
 	}
-	userAfterUpsertHooks = []UserHook{}
+	organizationAfterUpsertHooks = []OrganizationHook{}
 }
 
-func testUsersInsert(t *testing.T) {
+func testOrganizationsInsert(t *testing.T) {
 	t.Parallel()
 
 	seed := randomize.NewSeed()
 	var err error
-	o := &User{}
-	if err = randomize.Struct(seed, o, userDBTypes, true, userColumnsWithDefault...); err != nil {
-		t.Errorf("Unable to randomize User struct: %s", err)
+	o := &Organization{}
+	if err = randomize.Struct(seed, o, organizationDBTypes, true, organizationColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize Organization struct: %s", err)
 	}
 
 	ctx := context.Background()
@@ -457,7 +457,7 @@ func testUsersInsert(t *testing.T) {
 		t.Error(err)
 	}
 
-	count, err := Users().Count(ctx, tx)
+	count, err := Organizations().Count(ctx, tx)
 	if err != nil {
 		t.Error(err)
 	}
@@ -467,24 +467,24 @@ func testUsersInsert(t *testing.T) {
 	}
 }
 
-func testUsersInsertWhitelist(t *testing.T) {
+func testOrganizationsInsertWhitelist(t *testing.T) {
 	t.Parallel()
 
 	seed := randomize.NewSeed()
 	var err error
-	o := &User{}
-	if err = randomize.Struct(seed, o, userDBTypes, true); err != nil {
-		t.Errorf("Unable to randomize User struct: %s", err)
+	o := &Organization{}
+	if err = randomize.Struct(seed, o, organizationDBTypes, true); err != nil {
+		t.Errorf("Unable to randomize Organization struct: %s", err)
 	}
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
-	if err = o.Insert(ctx, tx, boil.Whitelist(strmangle.SetMerge(userPrimaryKeyColumns, userColumnsWithoutDefault)...)); err != nil {
+	if err = o.Insert(ctx, tx, boil.Whitelist(strmangle.SetMerge(organizationPrimaryKeyColumns, organizationColumnsWithoutDefault)...)); err != nil {
 		t.Error(err)
 	}
 
-	count, err := Users().Count(ctx, tx)
+	count, err := Organizations().Count(ctx, tx)
 	if err != nil {
 		t.Error(err)
 	}
@@ -494,18 +494,18 @@ func testUsersInsertWhitelist(t *testing.T) {
 	}
 }
 
-func testUserToManyOrganizationMembers(t *testing.T) {
+func testOrganizationToManyOrganizationMembers(t *testing.T) {
 	var err error
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
 
-	var a User
+	var a Organization
 	var b, c OrganizationMember
 
 	seed := randomize.NewSeed()
-	if err = randomize.Struct(seed, &a, userDBTypes, true, userColumnsWithDefault...); err != nil {
-		t.Errorf("Unable to randomize User struct: %s", err)
+	if err = randomize.Struct(seed, &a, organizationDBTypes, true, organizationColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize Organization struct: %s", err)
 	}
 
 	if err := a.Insert(ctx, tx, boil.Infer()); err != nil {
@@ -519,8 +519,8 @@ func testUserToManyOrganizationMembers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	queries.Assign(&b.UserID, a.ID)
-	queries.Assign(&c.UserID, a.ID)
+	queries.Assign(&b.OrganizationID, a.ID)
+	queries.Assign(&c.OrganizationID, a.ID)
 	if err = b.Insert(ctx, tx, boil.Infer()); err != nil {
 		t.Fatal(err)
 	}
@@ -535,10 +535,10 @@ func testUserToManyOrganizationMembers(t *testing.T) {
 
 	bFound, cFound := false, false
 	for _, v := range check {
-		if queries.Equal(v.UserID, b.UserID) {
+		if queries.Equal(v.OrganizationID, b.OrganizationID) {
 			bFound = true
 		}
-		if queries.Equal(v.UserID, c.UserID) {
+		if queries.Equal(v.OrganizationID, c.OrganizationID) {
 			cFound = true
 		}
 	}
@@ -550,8 +550,8 @@ func testUserToManyOrganizationMembers(t *testing.T) {
 		t.Error("expected to find c")
 	}
 
-	slice := UserSlice{&a}
-	if err = a.L.LoadOrganizationMembers(ctx, tx, false, (*[]*User)(&slice), nil); err != nil {
+	slice := OrganizationSlice{&a}
+	if err = a.L.LoadOrganizationMembers(ctx, tx, false, (*[]*Organization)(&slice), nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := len(a.R.OrganizationMembers); got != 2 {
@@ -571,18 +571,18 @@ func testUserToManyOrganizationMembers(t *testing.T) {
 	}
 }
 
-func testUserToManyCreatedByProjects(t *testing.T) {
+func testOrganizationToManyProjects(t *testing.T) {
 	var err error
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
 
-	var a User
+	var a Organization
 	var b, c Project
 
 	seed := randomize.NewSeed()
-	if err = randomize.Struct(seed, &a, userDBTypes, true, userColumnsWithDefault...); err != nil {
-		t.Errorf("Unable to randomize User struct: %s", err)
+	if err = randomize.Struct(seed, &a, organizationDBTypes, true, organizationColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize Organization struct: %s", err)
 	}
 
 	if err := a.Insert(ctx, tx, boil.Infer()); err != nil {
@@ -596,8 +596,8 @@ func testUserToManyCreatedByProjects(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	queries.Assign(&b.CreatedBy, a.ID)
-	queries.Assign(&c.CreatedBy, a.ID)
+	queries.Assign(&b.OrganizationID, a.ID)
+	queries.Assign(&c.OrganizationID, a.ID)
 	if err = b.Insert(ctx, tx, boil.Infer()); err != nil {
 		t.Fatal(err)
 	}
@@ -605,17 +605,17 @@ func testUserToManyCreatedByProjects(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	check, err := a.CreatedByProjects().All(ctx, tx)
+	check, err := a.Projects().All(ctx, tx)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	bFound, cFound := false, false
 	for _, v := range check {
-		if queries.Equal(v.CreatedBy, b.CreatedBy) {
+		if queries.Equal(v.OrganizationID, b.OrganizationID) {
 			bFound = true
 		}
-		if queries.Equal(v.CreatedBy, c.CreatedBy) {
+		if queries.Equal(v.OrganizationID, c.OrganizationID) {
 			cFound = true
 		}
 	}
@@ -627,19 +627,19 @@ func testUserToManyCreatedByProjects(t *testing.T) {
 		t.Error("expected to find c")
 	}
 
-	slice := UserSlice{&a}
-	if err = a.L.LoadCreatedByProjects(ctx, tx, false, (*[]*User)(&slice), nil); err != nil {
+	slice := OrganizationSlice{&a}
+	if err = a.L.LoadProjects(ctx, tx, false, (*[]*Organization)(&slice), nil); err != nil {
 		t.Fatal(err)
 	}
-	if got := len(a.R.CreatedByProjects); got != 2 {
+	if got := len(a.R.Projects); got != 2 {
 		t.Error("number of eager loaded records wrong, got:", got)
 	}
 
-	a.R.CreatedByProjects = nil
-	if err = a.L.LoadCreatedByProjects(ctx, tx, true, &a, nil); err != nil {
+	a.R.Projects = nil
+	if err = a.L.LoadProjects(ctx, tx, true, &a, nil); err != nil {
 		t.Fatal(err)
 	}
-	if got := len(a.R.CreatedByProjects); got != 2 {
+	if got := len(a.R.Projects); got != 2 {
 		t.Error("number of eager loaded records wrong, got:", got)
 	}
 
@@ -648,33 +648,33 @@ func testUserToManyCreatedByProjects(t *testing.T) {
 	}
 }
 
-func testUserToManyOwnerProjects(t *testing.T) {
+func testOrganizationToManyUsers(t *testing.T) {
 	var err error
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
 
-	var a User
-	var b, c Project
+	var a Organization
+	var b, c User
 
 	seed := randomize.NewSeed()
-	if err = randomize.Struct(seed, &a, userDBTypes, true, userColumnsWithDefault...); err != nil {
-		t.Errorf("Unable to randomize User struct: %s", err)
+	if err = randomize.Struct(seed, &a, organizationDBTypes, true, organizationColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize Organization struct: %s", err)
 	}
 
 	if err := a.Insert(ctx, tx, boil.Infer()); err != nil {
 		t.Fatal(err)
 	}
 
-	if err = randomize.Struct(seed, &b, projectDBTypes, false, projectColumnsWithDefault...); err != nil {
+	if err = randomize.Struct(seed, &b, userDBTypes, false, userColumnsWithDefault...); err != nil {
 		t.Fatal(err)
 	}
-	if err = randomize.Struct(seed, &c, projectDBTypes, false, projectColumnsWithDefault...); err != nil {
+	if err = randomize.Struct(seed, &c, userDBTypes, false, userColumnsWithDefault...); err != nil {
 		t.Fatal(err)
 	}
 
-	queries.Assign(&b.OwnerID, a.ID)
-	queries.Assign(&c.OwnerID, a.ID)
+	queries.Assign(&b.OrganizationID, a.ID)
+	queries.Assign(&c.OrganizationID, a.ID)
 	if err = b.Insert(ctx, tx, boil.Infer()); err != nil {
 		t.Fatal(err)
 	}
@@ -682,17 +682,17 @@ func testUserToManyOwnerProjects(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	check, err := a.OwnerProjects().All(ctx, tx)
+	check, err := a.Users().All(ctx, tx)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	bFound, cFound := false, false
 	for _, v := range check {
-		if queries.Equal(v.OwnerID, b.OwnerID) {
+		if queries.Equal(v.OrganizationID, b.OrganizationID) {
 			bFound = true
 		}
-		if queries.Equal(v.OwnerID, c.OwnerID) {
+		if queries.Equal(v.OrganizationID, c.OrganizationID) {
 			cFound = true
 		}
 	}
@@ -704,19 +704,19 @@ func testUserToManyOwnerProjects(t *testing.T) {
 		t.Error("expected to find c")
 	}
 
-	slice := UserSlice{&a}
-	if err = a.L.LoadOwnerProjects(ctx, tx, false, (*[]*User)(&slice), nil); err != nil {
+	slice := OrganizationSlice{&a}
+	if err = a.L.LoadUsers(ctx, tx, false, (*[]*Organization)(&slice), nil); err != nil {
 		t.Fatal(err)
 	}
-	if got := len(a.R.OwnerProjects); got != 2 {
+	if got := len(a.R.Users); got != 2 {
 		t.Error("number of eager loaded records wrong, got:", got)
 	}
 
-	a.R.OwnerProjects = nil
-	if err = a.L.LoadOwnerProjects(ctx, tx, true, &a, nil); err != nil {
+	a.R.Users = nil
+	if err = a.L.LoadUsers(ctx, tx, true, &a, nil); err != nil {
 		t.Fatal(err)
 	}
-	if got := len(a.R.OwnerProjects); got != 2 {
+	if got := len(a.R.Users); got != 2 {
 		t.Error("number of eager loaded records wrong, got:", got)
 	}
 
@@ -725,18 +725,18 @@ func testUserToManyOwnerProjects(t *testing.T) {
 	}
 }
 
-func testUserToManyAddOpOrganizationMembers(t *testing.T) {
+func testOrganizationToManyAddOpOrganizationMembers(t *testing.T) {
 	var err error
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
 
-	var a User
+	var a Organization
 	var b, c, d, e OrganizationMember
 
 	seed := randomize.NewSeed()
-	if err = randomize.Struct(seed, &a, userDBTypes, false, strmangle.SetComplement(userPrimaryKeyColumns, userColumnsWithoutDefault)...); err != nil {
+	if err = randomize.Struct(seed, &a, organizationDBTypes, false, strmangle.SetComplement(organizationPrimaryKeyColumns, organizationColumnsWithoutDefault)...); err != nil {
 		t.Fatal(err)
 	}
 	foreigners := []*OrganizationMember{&b, &c, &d, &e}
@@ -770,17 +770,17 @@ func testUserToManyAddOpOrganizationMembers(t *testing.T) {
 		first := x[0]
 		second := x[1]
 
-		if !queries.Equal(a.ID, first.UserID) {
-			t.Error("foreign key was wrong value", a.ID, first.UserID)
+		if !queries.Equal(a.ID, first.OrganizationID) {
+			t.Error("foreign key was wrong value", a.ID, first.OrganizationID)
 		}
-		if !queries.Equal(a.ID, second.UserID) {
-			t.Error("foreign key was wrong value", a.ID, second.UserID)
+		if !queries.Equal(a.ID, second.OrganizationID) {
+			t.Error("foreign key was wrong value", a.ID, second.OrganizationID)
 		}
 
-		if first.R.User != &a {
+		if first.R.Organization != &a {
 			t.Error("relationship was not added properly to the foreign slice")
 		}
-		if second.R.User != &a {
+		if second.R.Organization != &a {
 			t.Error("relationship was not added properly to the foreign slice")
 		}
 
@@ -801,18 +801,18 @@ func testUserToManyAddOpOrganizationMembers(t *testing.T) {
 	}
 }
 
-func testUserToManySetOpOrganizationMembers(t *testing.T) {
+func testOrganizationToManySetOpOrganizationMembers(t *testing.T) {
 	var err error
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
 
-	var a User
+	var a Organization
 	var b, c, d, e OrganizationMember
 
 	seed := randomize.NewSeed()
-	if err = randomize.Struct(seed, &a, userDBTypes, false, strmangle.SetComplement(userPrimaryKeyColumns, userColumnsWithoutDefault)...); err != nil {
+	if err = randomize.Struct(seed, &a, organizationDBTypes, false, strmangle.SetComplement(organizationPrimaryKeyColumns, organizationColumnsWithoutDefault)...); err != nil {
 		t.Fatal(err)
 	}
 	foreigners := []*OrganizationMember{&b, &c, &d, &e}
@@ -858,29 +858,29 @@ func testUserToManySetOpOrganizationMembers(t *testing.T) {
 		t.Error("count was wrong:", count)
 	}
 
-	if !queries.IsValuerNil(b.UserID) {
+	if !queries.IsValuerNil(b.OrganizationID) {
 		t.Error("want b's foreign key value to be nil")
 	}
-	if !queries.IsValuerNil(c.UserID) {
+	if !queries.IsValuerNil(c.OrganizationID) {
 		t.Error("want c's foreign key value to be nil")
 	}
-	if !queries.Equal(a.ID, d.UserID) {
-		t.Error("foreign key was wrong value", a.ID, d.UserID)
+	if !queries.Equal(a.ID, d.OrganizationID) {
+		t.Error("foreign key was wrong value", a.ID, d.OrganizationID)
 	}
-	if !queries.Equal(a.ID, e.UserID) {
-		t.Error("foreign key was wrong value", a.ID, e.UserID)
+	if !queries.Equal(a.ID, e.OrganizationID) {
+		t.Error("foreign key was wrong value", a.ID, e.OrganizationID)
 	}
 
-	if b.R.User != nil {
+	if b.R.Organization != nil {
 		t.Error("relationship was not removed properly from the foreign struct")
 	}
-	if c.R.User != nil {
+	if c.R.Organization != nil {
 		t.Error("relationship was not removed properly from the foreign struct")
 	}
-	if d.R.User != &a {
+	if d.R.Organization != &a {
 		t.Error("relationship was not added properly to the foreign struct")
 	}
-	if e.R.User != &a {
+	if e.R.Organization != &a {
 		t.Error("relationship was not added properly to the foreign struct")
 	}
 
@@ -892,18 +892,18 @@ func testUserToManySetOpOrganizationMembers(t *testing.T) {
 	}
 }
 
-func testUserToManyRemoveOpOrganizationMembers(t *testing.T) {
+func testOrganizationToManyRemoveOpOrganizationMembers(t *testing.T) {
 	var err error
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
 
-	var a User
+	var a Organization
 	var b, c, d, e OrganizationMember
 
 	seed := randomize.NewSeed()
-	if err = randomize.Struct(seed, &a, userDBTypes, false, strmangle.SetComplement(userPrimaryKeyColumns, userColumnsWithoutDefault)...); err != nil {
+	if err = randomize.Struct(seed, &a, organizationDBTypes, false, strmangle.SetComplement(organizationPrimaryKeyColumns, organizationColumnsWithoutDefault)...); err != nil {
 		t.Fatal(err)
 	}
 	foreigners := []*OrganizationMember{&b, &c, &d, &e}
@@ -943,23 +943,23 @@ func testUserToManyRemoveOpOrganizationMembers(t *testing.T) {
 		t.Error("count was wrong:", count)
 	}
 
-	if !queries.IsValuerNil(b.UserID) {
+	if !queries.IsValuerNil(b.OrganizationID) {
 		t.Error("want b's foreign key value to be nil")
 	}
-	if !queries.IsValuerNil(c.UserID) {
+	if !queries.IsValuerNil(c.OrganizationID) {
 		t.Error("want c's foreign key value to be nil")
 	}
 
-	if b.R.User != nil {
+	if b.R.Organization != nil {
 		t.Error("relationship was not removed properly from the foreign struct")
 	}
-	if c.R.User != nil {
+	if c.R.Organization != nil {
 		t.Error("relationship was not removed properly from the foreign struct")
 	}
-	if d.R.User != &a {
+	if d.R.Organization != &a {
 		t.Error("relationship to a should have been preserved")
 	}
-	if e.R.User != &a {
+	if e.R.Organization != &a {
 		t.Error("relationship to a should have been preserved")
 	}
 
@@ -976,18 +976,18 @@ func testUserToManyRemoveOpOrganizationMembers(t *testing.T) {
 	}
 }
 
-func testUserToManyAddOpCreatedByProjects(t *testing.T) {
+func testOrganizationToManyAddOpProjects(t *testing.T) {
 	var err error
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
 
-	var a User
+	var a Organization
 	var b, c, d, e Project
 
 	seed := randomize.NewSeed()
-	if err = randomize.Struct(seed, &a, userDBTypes, false, strmangle.SetComplement(userPrimaryKeyColumns, userColumnsWithoutDefault)...); err != nil {
+	if err = randomize.Struct(seed, &a, organizationDBTypes, false, strmangle.SetComplement(organizationPrimaryKeyColumns, organizationColumnsWithoutDefault)...); err != nil {
 		t.Fatal(err)
 	}
 	foreigners := []*Project{&b, &c, &d, &e}
@@ -1013,7 +1013,7 @@ func testUserToManyAddOpCreatedByProjects(t *testing.T) {
 	}
 
 	for i, x := range foreignersSplitByInsertion {
-		err = a.AddCreatedByProjects(ctx, tx, i != 0, x...)
+		err = a.AddProjects(ctx, tx, i != 0, x...)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1021,28 +1021,28 @@ func testUserToManyAddOpCreatedByProjects(t *testing.T) {
 		first := x[0]
 		second := x[1]
 
-		if !queries.Equal(a.ID, first.CreatedBy) {
-			t.Error("foreign key was wrong value", a.ID, first.CreatedBy)
+		if !queries.Equal(a.ID, first.OrganizationID) {
+			t.Error("foreign key was wrong value", a.ID, first.OrganizationID)
 		}
-		if !queries.Equal(a.ID, second.CreatedBy) {
-			t.Error("foreign key was wrong value", a.ID, second.CreatedBy)
+		if !queries.Equal(a.ID, second.OrganizationID) {
+			t.Error("foreign key was wrong value", a.ID, second.OrganizationID)
 		}
 
-		if first.R.CreatedByUser != &a {
+		if first.R.Organization != &a {
 			t.Error("relationship was not added properly to the foreign slice")
 		}
-		if second.R.CreatedByUser != &a {
+		if second.R.Organization != &a {
 			t.Error("relationship was not added properly to the foreign slice")
 		}
 
-		if a.R.CreatedByProjects[i*2] != first {
+		if a.R.Projects[i*2] != first {
 			t.Error("relationship struct slice not set to correct value")
 		}
-		if a.R.CreatedByProjects[i*2+1] != second {
+		if a.R.Projects[i*2+1] != second {
 			t.Error("relationship struct slice not set to correct value")
 		}
 
-		count, err := a.CreatedByProjects().Count(ctx, tx)
+		count, err := a.Projects().Count(ctx, tx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1052,18 +1052,18 @@ func testUserToManyAddOpCreatedByProjects(t *testing.T) {
 	}
 }
 
-func testUserToManySetOpCreatedByProjects(t *testing.T) {
+func testOrganizationToManySetOpProjects(t *testing.T) {
 	var err error
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
 
-	var a User
+	var a Organization
 	var b, c, d, e Project
 
 	seed := randomize.NewSeed()
-	if err = randomize.Struct(seed, &a, userDBTypes, false, strmangle.SetComplement(userPrimaryKeyColumns, userColumnsWithoutDefault)...); err != nil {
+	if err = randomize.Struct(seed, &a, organizationDBTypes, false, strmangle.SetComplement(organizationPrimaryKeyColumns, organizationColumnsWithoutDefault)...); err != nil {
 		t.Fatal(err)
 	}
 	foreigners := []*Project{&b, &c, &d, &e}
@@ -1083,25 +1083,12 @@ func testUserToManySetOpCreatedByProjects(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = a.SetCreatedByProjects(ctx, tx, false, &b, &c)
+	err = a.SetProjects(ctx, tx, false, &b, &c)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	count, err := a.CreatedByProjects().Count(ctx, tx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if count != 2 {
-		t.Error("count was wrong:", count)
-	}
-
-	err = a.SetCreatedByProjects(ctx, tx, true, &d, &e)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	count, err = a.CreatedByProjects().Count(ctx, tx)
+	count, err := a.Projects().Count(ctx, tx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1109,52 +1096,65 @@ func testUserToManySetOpCreatedByProjects(t *testing.T) {
 		t.Error("count was wrong:", count)
 	}
 
-	if !queries.IsValuerNil(b.CreatedBy) {
+	err = a.SetProjects(ctx, tx, true, &d, &e)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	count, err = a.Projects().Count(ctx, tx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Error("count was wrong:", count)
+	}
+
+	if !queries.IsValuerNil(b.OrganizationID) {
 		t.Error("want b's foreign key value to be nil")
 	}
-	if !queries.IsValuerNil(c.CreatedBy) {
+	if !queries.IsValuerNil(c.OrganizationID) {
 		t.Error("want c's foreign key value to be nil")
 	}
-	if !queries.Equal(a.ID, d.CreatedBy) {
-		t.Error("foreign key was wrong value", a.ID, d.CreatedBy)
+	if !queries.Equal(a.ID, d.OrganizationID) {
+		t.Error("foreign key was wrong value", a.ID, d.OrganizationID)
 	}
-	if !queries.Equal(a.ID, e.CreatedBy) {
-		t.Error("foreign key was wrong value", a.ID, e.CreatedBy)
-	}
-
-	if b.R.CreatedByUser != nil {
-		t.Error("relationship was not removed properly from the foreign struct")
-	}
-	if c.R.CreatedByUser != nil {
-		t.Error("relationship was not removed properly from the foreign struct")
-	}
-	if d.R.CreatedByUser != &a {
-		t.Error("relationship was not added properly to the foreign struct")
-	}
-	if e.R.CreatedByUser != &a {
-		t.Error("relationship was not added properly to the foreign struct")
+	if !queries.Equal(a.ID, e.OrganizationID) {
+		t.Error("foreign key was wrong value", a.ID, e.OrganizationID)
 	}
 
-	if a.R.CreatedByProjects[0] != &d {
+	if b.R.Organization != nil {
+		t.Error("relationship was not removed properly from the foreign struct")
+	}
+	if c.R.Organization != nil {
+		t.Error("relationship was not removed properly from the foreign struct")
+	}
+	if d.R.Organization != &a {
+		t.Error("relationship was not added properly to the foreign struct")
+	}
+	if e.R.Organization != &a {
+		t.Error("relationship was not added properly to the foreign struct")
+	}
+
+	if a.R.Projects[0] != &d {
 		t.Error("relationship struct slice not set to correct value")
 	}
-	if a.R.CreatedByProjects[1] != &e {
+	if a.R.Projects[1] != &e {
 		t.Error("relationship struct slice not set to correct value")
 	}
 }
 
-func testUserToManyRemoveOpCreatedByProjects(t *testing.T) {
+func testOrganizationToManyRemoveOpProjects(t *testing.T) {
 	var err error
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
 
-	var a User
+	var a Organization
 	var b, c, d, e Project
 
 	seed := randomize.NewSeed()
-	if err = randomize.Struct(seed, &a, userDBTypes, false, strmangle.SetComplement(userPrimaryKeyColumns, userColumnsWithoutDefault)...); err != nil {
+	if err = randomize.Struct(seed, &a, organizationDBTypes, false, strmangle.SetComplement(organizationPrimaryKeyColumns, organizationColumnsWithoutDefault)...); err != nil {
 		t.Fatal(err)
 	}
 	foreigners := []*Project{&b, &c, &d, &e}
@@ -1168,12 +1168,12 @@ func testUserToManyRemoveOpCreatedByProjects(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = a.AddCreatedByProjects(ctx, tx, true, foreigners...)
+	err = a.AddProjects(ctx, tx, true, foreigners...)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	count, err := a.CreatedByProjects().Count(ctx, tx)
+	count, err := a.Projects().Count(ctx, tx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1181,12 +1181,12 @@ func testUserToManyRemoveOpCreatedByProjects(t *testing.T) {
 		t.Error("count was wrong:", count)
 	}
 
-	err = a.RemoveCreatedByProjects(ctx, tx, foreigners[:2]...)
+	err = a.RemoveProjects(ctx, tx, foreigners[:2]...)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	count, err = a.CreatedByProjects().Count(ctx, tx)
+	count, err = a.Projects().Count(ctx, tx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1194,56 +1194,56 @@ func testUserToManyRemoveOpCreatedByProjects(t *testing.T) {
 		t.Error("count was wrong:", count)
 	}
 
-	if !queries.IsValuerNil(b.CreatedBy) {
+	if !queries.IsValuerNil(b.OrganizationID) {
 		t.Error("want b's foreign key value to be nil")
 	}
-	if !queries.IsValuerNil(c.CreatedBy) {
+	if !queries.IsValuerNil(c.OrganizationID) {
 		t.Error("want c's foreign key value to be nil")
 	}
 
-	if b.R.CreatedByUser != nil {
+	if b.R.Organization != nil {
 		t.Error("relationship was not removed properly from the foreign struct")
 	}
-	if c.R.CreatedByUser != nil {
+	if c.R.Organization != nil {
 		t.Error("relationship was not removed properly from the foreign struct")
 	}
-	if d.R.CreatedByUser != &a {
+	if d.R.Organization != &a {
 		t.Error("relationship to a should have been preserved")
 	}
-	if e.R.CreatedByUser != &a {
+	if e.R.Organization != &a {
 		t.Error("relationship to a should have been preserved")
 	}
 
-	if len(a.R.CreatedByProjects) != 2 {
+	if len(a.R.Projects) != 2 {
 		t.Error("should have preserved two relationships")
 	}
 
 	// Removal doesn't do a stable deletion for performance so we have to flip the order
-	if a.R.CreatedByProjects[1] != &d {
+	if a.R.Projects[1] != &d {
 		t.Error("relationship to d should have been preserved")
 	}
-	if a.R.CreatedByProjects[0] != &e {
+	if a.R.Projects[0] != &e {
 		t.Error("relationship to e should have been preserved")
 	}
 }
 
-func testUserToManyAddOpOwnerProjects(t *testing.T) {
+func testOrganizationToManyAddOpUsers(t *testing.T) {
 	var err error
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
 
-	var a User
-	var b, c, d, e Project
+	var a Organization
+	var b, c, d, e User
 
 	seed := randomize.NewSeed()
-	if err = randomize.Struct(seed, &a, userDBTypes, false, strmangle.SetComplement(userPrimaryKeyColumns, userColumnsWithoutDefault)...); err != nil {
+	if err = randomize.Struct(seed, &a, organizationDBTypes, false, strmangle.SetComplement(organizationPrimaryKeyColumns, organizationColumnsWithoutDefault)...); err != nil {
 		t.Fatal(err)
 	}
-	foreigners := []*Project{&b, &c, &d, &e}
+	foreigners := []*User{&b, &c, &d, &e}
 	for _, x := range foreigners {
-		if err = randomize.Struct(seed, x, projectDBTypes, false, strmangle.SetComplement(projectPrimaryKeyColumns, projectColumnsWithoutDefault)...); err != nil {
+		if err = randomize.Struct(seed, x, userDBTypes, false, strmangle.SetComplement(userPrimaryKeyColumns, userColumnsWithoutDefault)...); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -1258,13 +1258,13 @@ func testUserToManyAddOpOwnerProjects(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	foreignersSplitByInsertion := [][]*Project{
+	foreignersSplitByInsertion := [][]*User{
 		{&b, &c},
 		{&d, &e},
 	}
 
 	for i, x := range foreignersSplitByInsertion {
-		err = a.AddOwnerProjects(ctx, tx, i != 0, x...)
+		err = a.AddUsers(ctx, tx, i != 0, x...)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1272,28 +1272,28 @@ func testUserToManyAddOpOwnerProjects(t *testing.T) {
 		first := x[0]
 		second := x[1]
 
-		if !queries.Equal(a.ID, first.OwnerID) {
-			t.Error("foreign key was wrong value", a.ID, first.OwnerID)
+		if !queries.Equal(a.ID, first.OrganizationID) {
+			t.Error("foreign key was wrong value", a.ID, first.OrganizationID)
 		}
-		if !queries.Equal(a.ID, second.OwnerID) {
-			t.Error("foreign key was wrong value", a.ID, second.OwnerID)
+		if !queries.Equal(a.ID, second.OrganizationID) {
+			t.Error("foreign key was wrong value", a.ID, second.OrganizationID)
 		}
 
-		if first.R.Owner != &a {
+		if first.R.Organization != &a {
 			t.Error("relationship was not added properly to the foreign slice")
 		}
-		if second.R.Owner != &a {
+		if second.R.Organization != &a {
 			t.Error("relationship was not added properly to the foreign slice")
 		}
 
-		if a.R.OwnerProjects[i*2] != first {
+		if a.R.Users[i*2] != first {
 			t.Error("relationship struct slice not set to correct value")
 		}
-		if a.R.OwnerProjects[i*2+1] != second {
+		if a.R.Users[i*2+1] != second {
 			t.Error("relationship struct slice not set to correct value")
 		}
 
-		count, err := a.OwnerProjects().Count(ctx, tx)
+		count, err := a.Users().Count(ctx, tx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1303,23 +1303,23 @@ func testUserToManyAddOpOwnerProjects(t *testing.T) {
 	}
 }
 
-func testUserToManySetOpOwnerProjects(t *testing.T) {
+func testOrganizationToManySetOpUsers(t *testing.T) {
 	var err error
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
 
-	var a User
-	var b, c, d, e Project
+	var a Organization
+	var b, c, d, e User
 
 	seed := randomize.NewSeed()
-	if err = randomize.Struct(seed, &a, userDBTypes, false, strmangle.SetComplement(userPrimaryKeyColumns, userColumnsWithoutDefault)...); err != nil {
+	if err = randomize.Struct(seed, &a, organizationDBTypes, false, strmangle.SetComplement(organizationPrimaryKeyColumns, organizationColumnsWithoutDefault)...); err != nil {
 		t.Fatal(err)
 	}
-	foreigners := []*Project{&b, &c, &d, &e}
+	foreigners := []*User{&b, &c, &d, &e}
 	for _, x := range foreigners {
-		if err = randomize.Struct(seed, x, projectDBTypes, false, strmangle.SetComplement(projectPrimaryKeyColumns, projectColumnsWithoutDefault)...); err != nil {
+		if err = randomize.Struct(seed, x, userDBTypes, false, strmangle.SetComplement(userPrimaryKeyColumns, userColumnsWithoutDefault)...); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -1334,25 +1334,12 @@ func testUserToManySetOpOwnerProjects(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = a.SetOwnerProjects(ctx, tx, false, &b, &c)
+	err = a.SetUsers(ctx, tx, false, &b, &c)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	count, err := a.OwnerProjects().Count(ctx, tx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if count != 2 {
-		t.Error("count was wrong:", count)
-	}
-
-	err = a.SetOwnerProjects(ctx, tx, true, &d, &e)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	count, err = a.OwnerProjects().Count(ctx, tx)
+	count, err := a.Users().Count(ctx, tx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1360,57 +1347,70 @@ func testUserToManySetOpOwnerProjects(t *testing.T) {
 		t.Error("count was wrong:", count)
 	}
 
-	if !queries.IsValuerNil(b.OwnerID) {
+	err = a.SetUsers(ctx, tx, true, &d, &e)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	count, err = a.Users().Count(ctx, tx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Error("count was wrong:", count)
+	}
+
+	if !queries.IsValuerNil(b.OrganizationID) {
 		t.Error("want b's foreign key value to be nil")
 	}
-	if !queries.IsValuerNil(c.OwnerID) {
+	if !queries.IsValuerNil(c.OrganizationID) {
 		t.Error("want c's foreign key value to be nil")
 	}
-	if !queries.Equal(a.ID, d.OwnerID) {
-		t.Error("foreign key was wrong value", a.ID, d.OwnerID)
+	if !queries.Equal(a.ID, d.OrganizationID) {
+		t.Error("foreign key was wrong value", a.ID, d.OrganizationID)
 	}
-	if !queries.Equal(a.ID, e.OwnerID) {
-		t.Error("foreign key was wrong value", a.ID, e.OwnerID)
-	}
-
-	if b.R.Owner != nil {
-		t.Error("relationship was not removed properly from the foreign struct")
-	}
-	if c.R.Owner != nil {
-		t.Error("relationship was not removed properly from the foreign struct")
-	}
-	if d.R.Owner != &a {
-		t.Error("relationship was not added properly to the foreign struct")
-	}
-	if e.R.Owner != &a {
-		t.Error("relationship was not added properly to the foreign struct")
+	if !queries.Equal(a.ID, e.OrganizationID) {
+		t.Error("foreign key was wrong value", a.ID, e.OrganizationID)
 	}
 
-	if a.R.OwnerProjects[0] != &d {
+	if b.R.Organization != nil {
+		t.Error("relationship was not removed properly from the foreign struct")
+	}
+	if c.R.Organization != nil {
+		t.Error("relationship was not removed properly from the foreign struct")
+	}
+	if d.R.Organization != &a {
+		t.Error("relationship was not added properly to the foreign struct")
+	}
+	if e.R.Organization != &a {
+		t.Error("relationship was not added properly to the foreign struct")
+	}
+
+	if a.R.Users[0] != &d {
 		t.Error("relationship struct slice not set to correct value")
 	}
-	if a.R.OwnerProjects[1] != &e {
+	if a.R.Users[1] != &e {
 		t.Error("relationship struct slice not set to correct value")
 	}
 }
 
-func testUserToManyRemoveOpOwnerProjects(t *testing.T) {
+func testOrganizationToManyRemoveOpUsers(t *testing.T) {
 	var err error
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
 
-	var a User
-	var b, c, d, e Project
+	var a Organization
+	var b, c, d, e User
 
 	seed := randomize.NewSeed()
-	if err = randomize.Struct(seed, &a, userDBTypes, false, strmangle.SetComplement(userPrimaryKeyColumns, userColumnsWithoutDefault)...); err != nil {
+	if err = randomize.Struct(seed, &a, organizationDBTypes, false, strmangle.SetComplement(organizationPrimaryKeyColumns, organizationColumnsWithoutDefault)...); err != nil {
 		t.Fatal(err)
 	}
-	foreigners := []*Project{&b, &c, &d, &e}
+	foreigners := []*User{&b, &c, &d, &e}
 	for _, x := range foreigners {
-		if err = randomize.Struct(seed, x, projectDBTypes, false, strmangle.SetComplement(projectPrimaryKeyColumns, projectColumnsWithoutDefault)...); err != nil {
+		if err = randomize.Struct(seed, x, userDBTypes, false, strmangle.SetComplement(userPrimaryKeyColumns, userColumnsWithoutDefault)...); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -1419,12 +1419,12 @@ func testUserToManyRemoveOpOwnerProjects(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = a.AddOwnerProjects(ctx, tx, true, foreigners...)
+	err = a.AddUsers(ctx, tx, true, foreigners...)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	count, err := a.OwnerProjects().Count(ctx, tx)
+	count, err := a.Users().Count(ctx, tx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1432,12 +1432,12 @@ func testUserToManyRemoveOpOwnerProjects(t *testing.T) {
 		t.Error("count was wrong:", count)
 	}
 
-	err = a.RemoveOwnerProjects(ctx, tx, foreigners[:2]...)
+	err = a.RemoveUsers(ctx, tx, foreigners[:2]...)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	count, err = a.OwnerProjects().Count(ctx, tx)
+	count, err = a.Users().Count(ctx, tx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1445,217 +1445,47 @@ func testUserToManyRemoveOpOwnerProjects(t *testing.T) {
 		t.Error("count was wrong:", count)
 	}
 
-	if !queries.IsValuerNil(b.OwnerID) {
+	if !queries.IsValuerNil(b.OrganizationID) {
 		t.Error("want b's foreign key value to be nil")
 	}
-	if !queries.IsValuerNil(c.OwnerID) {
+	if !queries.IsValuerNil(c.OrganizationID) {
 		t.Error("want c's foreign key value to be nil")
 	}
 
-	if b.R.Owner != nil {
+	if b.R.Organization != nil {
 		t.Error("relationship was not removed properly from the foreign struct")
 	}
-	if c.R.Owner != nil {
+	if c.R.Organization != nil {
 		t.Error("relationship was not removed properly from the foreign struct")
 	}
-	if d.R.Owner != &a {
+	if d.R.Organization != &a {
 		t.Error("relationship to a should have been preserved")
 	}
-	if e.R.Owner != &a {
+	if e.R.Organization != &a {
 		t.Error("relationship to a should have been preserved")
 	}
 
-	if len(a.R.OwnerProjects) != 2 {
+	if len(a.R.Users) != 2 {
 		t.Error("should have preserved two relationships")
 	}
 
 	// Removal doesn't do a stable deletion for performance so we have to flip the order
-	if a.R.OwnerProjects[1] != &d {
+	if a.R.Users[1] != &d {
 		t.Error("relationship to d should have been preserved")
 	}
-	if a.R.OwnerProjects[0] != &e {
+	if a.R.Users[0] != &e {
 		t.Error("relationship to e should have been preserved")
 	}
 }
 
-func testUserToOneOrganizationUsingOrganization(t *testing.T) {
-	ctx := context.Background()
-	tx := MustTx(boil.BeginTx(ctx, nil))
-	defer func() { _ = tx.Rollback() }()
-
-	var local User
-	var foreign Organization
-
-	seed := randomize.NewSeed()
-	if err := randomize.Struct(seed, &local, userDBTypes, true, userColumnsWithDefault...); err != nil {
-		t.Errorf("Unable to randomize User struct: %s", err)
-	}
-	if err := randomize.Struct(seed, &foreign, organizationDBTypes, false, organizationColumnsWithDefault...); err != nil {
-		t.Errorf("Unable to randomize Organization struct: %s", err)
-	}
-
-	if err := foreign.Insert(ctx, tx, boil.Infer()); err != nil {
-		t.Fatal(err)
-	}
-
-	queries.Assign(&local.OrganizationID, foreign.ID)
-	if err := local.Insert(ctx, tx, boil.Infer()); err != nil {
-		t.Fatal(err)
-	}
-
-	check, err := local.Organization().One(ctx, tx)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !queries.Equal(check.ID, foreign.ID) {
-		t.Errorf("want: %v, got %v", foreign.ID, check.ID)
-	}
-
-	ranAfterSelectHook := false
-	AddOrganizationHook(boil.AfterSelectHook, func(ctx context.Context, e boil.ContextExecutor, o *Organization) error {
-		ranAfterSelectHook = true
-		return nil
-	})
-
-	slice := UserSlice{&local}
-	if err = local.L.LoadOrganization(ctx, tx, false, (*[]*User)(&slice), nil); err != nil {
-		t.Fatal(err)
-	}
-	if local.R.Organization == nil {
-		t.Error("struct should have been eager loaded")
-	}
-
-	local.R.Organization = nil
-	if err = local.L.LoadOrganization(ctx, tx, true, &local, nil); err != nil {
-		t.Fatal(err)
-	}
-	if local.R.Organization == nil {
-		t.Error("struct should have been eager loaded")
-	}
-
-	if !ranAfterSelectHook {
-		t.Error("failed to run AfterSelect hook for relationship")
-	}
-}
-
-func testUserToOneSetOpOrganizationUsingOrganization(t *testing.T) {
-	var err error
-
-	ctx := context.Background()
-	tx := MustTx(boil.BeginTx(ctx, nil))
-	defer func() { _ = tx.Rollback() }()
-
-	var a User
-	var b, c Organization
-
-	seed := randomize.NewSeed()
-	if err = randomize.Struct(seed, &a, userDBTypes, false, strmangle.SetComplement(userPrimaryKeyColumns, userColumnsWithoutDefault)...); err != nil {
-		t.Fatal(err)
-	}
-	if err = randomize.Struct(seed, &b, organizationDBTypes, false, strmangle.SetComplement(organizationPrimaryKeyColumns, organizationColumnsWithoutDefault)...); err != nil {
-		t.Fatal(err)
-	}
-	if err = randomize.Struct(seed, &c, organizationDBTypes, false, strmangle.SetComplement(organizationPrimaryKeyColumns, organizationColumnsWithoutDefault)...); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := a.Insert(ctx, tx, boil.Infer()); err != nil {
-		t.Fatal(err)
-	}
-	if err = b.Insert(ctx, tx, boil.Infer()); err != nil {
-		t.Fatal(err)
-	}
-
-	for i, x := range []*Organization{&b, &c} {
-		err = a.SetOrganization(ctx, tx, i != 0, x)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if a.R.Organization != x {
-			t.Error("relationship struct not set to correct value")
-		}
-
-		if x.R.Users[0] != &a {
-			t.Error("failed to append to foreign relationship struct")
-		}
-		if !queries.Equal(a.OrganizationID, x.ID) {
-			t.Error("foreign key was wrong value", a.OrganizationID)
-		}
-
-		zero := reflect.Zero(reflect.TypeOf(a.OrganizationID))
-		reflect.Indirect(reflect.ValueOf(&a.OrganizationID)).Set(zero)
-
-		if err = a.Reload(ctx, tx); err != nil {
-			t.Fatal("failed to reload", err)
-		}
-
-		if !queries.Equal(a.OrganizationID, x.ID) {
-			t.Error("foreign key was wrong value", a.OrganizationID, x.ID)
-		}
-	}
-}
-
-func testUserToOneRemoveOpOrganizationUsingOrganization(t *testing.T) {
-	var err error
-
-	ctx := context.Background()
-	tx := MustTx(boil.BeginTx(ctx, nil))
-	defer func() { _ = tx.Rollback() }()
-
-	var a User
-	var b Organization
-
-	seed := randomize.NewSeed()
-	if err = randomize.Struct(seed, &a, userDBTypes, false, strmangle.SetComplement(userPrimaryKeyColumns, userColumnsWithoutDefault)...); err != nil {
-		t.Fatal(err)
-	}
-	if err = randomize.Struct(seed, &b, organizationDBTypes, false, strmangle.SetComplement(organizationPrimaryKeyColumns, organizationColumnsWithoutDefault)...); err != nil {
-		t.Fatal(err)
-	}
-
-	if err = a.Insert(ctx, tx, boil.Infer()); err != nil {
-		t.Fatal(err)
-	}
-
-	if err = a.SetOrganization(ctx, tx, true, &b); err != nil {
-		t.Fatal(err)
-	}
-
-	if err = a.RemoveOrganization(ctx, tx, &b); err != nil {
-		t.Error("failed to remove relationship")
-	}
-
-	count, err := a.Organization().Count(ctx, tx)
-	if err != nil {
-		t.Error(err)
-	}
-	if count != 0 {
-		t.Error("want no relationships remaining")
-	}
-
-	if a.R.Organization != nil {
-		t.Error("R struct entry should be nil")
-	}
-
-	if !queries.IsValuerNil(a.OrganizationID) {
-		t.Error("foreign key value should be nil")
-	}
-
-	if len(b.R.Users) != 0 {
-		t.Error("failed to remove a from b's relationships")
-	}
-}
-
-func testUsersReload(t *testing.T) {
+func testOrganizationsReload(t *testing.T) {
 	t.Parallel()
 
 	seed := randomize.NewSeed()
 	var err error
-	o := &User{}
-	if err = randomize.Struct(seed, o, userDBTypes, true, userColumnsWithDefault...); err != nil {
-		t.Errorf("Unable to randomize User struct: %s", err)
+	o := &Organization{}
+	if err = randomize.Struct(seed, o, organizationDBTypes, true, organizationColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize Organization struct: %s", err)
 	}
 
 	ctx := context.Background()
@@ -1670,14 +1500,14 @@ func testUsersReload(t *testing.T) {
 	}
 }
 
-func testUsersReloadAll(t *testing.T) {
+func testOrganizationsReloadAll(t *testing.T) {
 	t.Parallel()
 
 	seed := randomize.NewSeed()
 	var err error
-	o := &User{}
-	if err = randomize.Struct(seed, o, userDBTypes, true, userColumnsWithDefault...); err != nil {
-		t.Errorf("Unable to randomize User struct: %s", err)
+	o := &Organization{}
+	if err = randomize.Struct(seed, o, organizationDBTypes, true, organizationColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize Organization struct: %s", err)
 	}
 
 	ctx := context.Background()
@@ -1687,21 +1517,21 @@ func testUsersReloadAll(t *testing.T) {
 		t.Error(err)
 	}
 
-	slice := UserSlice{o}
+	slice := OrganizationSlice{o}
 
 	if err = slice.ReloadAll(ctx, tx); err != nil {
 		t.Error(err)
 	}
 }
 
-func testUsersSelect(t *testing.T) {
+func testOrganizationsSelect(t *testing.T) {
 	t.Parallel()
 
 	seed := randomize.NewSeed()
 	var err error
-	o := &User{}
-	if err = randomize.Struct(seed, o, userDBTypes, true, userColumnsWithDefault...); err != nil {
-		t.Errorf("Unable to randomize User struct: %s", err)
+	o := &Organization{}
+	if err = randomize.Struct(seed, o, organizationDBTypes, true, organizationColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize Organization struct: %s", err)
 	}
 
 	ctx := context.Background()
@@ -1711,7 +1541,7 @@ func testUsersSelect(t *testing.T) {
 		t.Error(err)
 	}
 
-	slice, err := Users().All(ctx, tx)
+	slice, err := Organizations().All(ctx, tx)
 	if err != nil {
 		t.Error(err)
 	}
@@ -1722,25 +1552,25 @@ func testUsersSelect(t *testing.T) {
 }
 
 var (
-	userDBTypes = map[string]string{`ID`: `integer`, `Name`: `character varying`, `Email`: `character varying`, `HashedPassword`: `character varying`, `Role`: `character varying`, `Status`: `character varying`, `IsActive`: `boolean`, `OrganizationID`: `integer`, `CreatedAt`: `timestamp without time zone`, `LastLogin`: `timestamp without time zone`, `GithubToken`: `character varying`}
-	_           = bytes.MinRead
+	organizationDBTypes = map[string]string{`ID`: `integer`, `Name`: `character varying`, `CreatedAt`: `timestamp with time zone`}
+	_                   = bytes.MinRead
 )
 
-func testUsersUpdate(t *testing.T) {
+func testOrganizationsUpdate(t *testing.T) {
 	t.Parallel()
 
-	if 0 == len(userPrimaryKeyColumns) {
+	if 0 == len(organizationPrimaryKeyColumns) {
 		t.Skip("Skipping table with no primary key columns")
 	}
-	if len(userAllColumns) == len(userPrimaryKeyColumns) {
+	if len(organizationAllColumns) == len(organizationPrimaryKeyColumns) {
 		t.Skip("Skipping table with only primary key columns")
 	}
 
 	seed := randomize.NewSeed()
 	var err error
-	o := &User{}
-	if err = randomize.Struct(seed, o, userDBTypes, true, userColumnsWithDefault...); err != nil {
-		t.Errorf("Unable to randomize User struct: %s", err)
+	o := &Organization{}
+	if err = randomize.Struct(seed, o, organizationDBTypes, true, organizationColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize Organization struct: %s", err)
 	}
 
 	ctx := context.Background()
@@ -1750,7 +1580,7 @@ func testUsersUpdate(t *testing.T) {
 		t.Error(err)
 	}
 
-	count, err := Users().Count(ctx, tx)
+	count, err := Organizations().Count(ctx, tx)
 	if err != nil {
 		t.Error(err)
 	}
@@ -1759,8 +1589,8 @@ func testUsersUpdate(t *testing.T) {
 		t.Error("want one record, got:", count)
 	}
 
-	if err = randomize.Struct(seed, o, userDBTypes, true, userPrimaryKeyColumns...); err != nil {
-		t.Errorf("Unable to randomize User struct: %s", err)
+	if err = randomize.Struct(seed, o, organizationDBTypes, true, organizationPrimaryKeyColumns...); err != nil {
+		t.Errorf("Unable to randomize Organization struct: %s", err)
 	}
 
 	if rowsAff, err := o.Update(ctx, tx, boil.Infer()); err != nil {
@@ -1770,18 +1600,18 @@ func testUsersUpdate(t *testing.T) {
 	}
 }
 
-func testUsersSliceUpdateAll(t *testing.T) {
+func testOrganizationsSliceUpdateAll(t *testing.T) {
 	t.Parallel()
 
-	if len(userAllColumns) == len(userPrimaryKeyColumns) {
+	if len(organizationAllColumns) == len(organizationPrimaryKeyColumns) {
 		t.Skip("Skipping table with only primary key columns")
 	}
 
 	seed := randomize.NewSeed()
 	var err error
-	o := &User{}
-	if err = randomize.Struct(seed, o, userDBTypes, true, userColumnsWithDefault...); err != nil {
-		t.Errorf("Unable to randomize User struct: %s", err)
+	o := &Organization{}
+	if err = randomize.Struct(seed, o, organizationDBTypes, true, organizationColumnsWithDefault...); err != nil {
+		t.Errorf("Unable to randomize Organization struct: %s", err)
 	}
 
 	ctx := context.Background()
@@ -1791,7 +1621,7 @@ func testUsersSliceUpdateAll(t *testing.T) {
 		t.Error(err)
 	}
 
-	count, err := Users().Count(ctx, tx)
+	count, err := Organizations().Count(ctx, tx)
 	if err != nil {
 		t.Error(err)
 	}
@@ -1800,18 +1630,18 @@ func testUsersSliceUpdateAll(t *testing.T) {
 		t.Error("want one record, got:", count)
 	}
 
-	if err = randomize.Struct(seed, o, userDBTypes, true, userPrimaryKeyColumns...); err != nil {
-		t.Errorf("Unable to randomize User struct: %s", err)
+	if err = randomize.Struct(seed, o, organizationDBTypes, true, organizationPrimaryKeyColumns...); err != nil {
+		t.Errorf("Unable to randomize Organization struct: %s", err)
 	}
 
 	// Remove Primary keys and unique columns from what we plan to update
 	var fields []string
-	if strmangle.StringSliceMatch(userAllColumns, userPrimaryKeyColumns) {
-		fields = userAllColumns
+	if strmangle.StringSliceMatch(organizationAllColumns, organizationPrimaryKeyColumns) {
+		fields = organizationAllColumns
 	} else {
 		fields = strmangle.SetComplement(
-			userAllColumns,
-			userPrimaryKeyColumns,
+			organizationAllColumns,
+			organizationPrimaryKeyColumns,
 		)
 	}
 
@@ -1829,7 +1659,7 @@ func testUsersSliceUpdateAll(t *testing.T) {
 		}
 	}
 
-	slice := UserSlice{o}
+	slice := OrganizationSlice{o}
 	if rowsAff, err := slice.UpdateAll(ctx, tx, updateMap); err != nil {
 		t.Error(err)
 	} else if rowsAff != 1 {
@@ -1837,29 +1667,29 @@ func testUsersSliceUpdateAll(t *testing.T) {
 	}
 }
 
-func testUsersUpsert(t *testing.T) {
+func testOrganizationsUpsert(t *testing.T) {
 	t.Parallel()
 
-	if len(userAllColumns) == len(userPrimaryKeyColumns) {
+	if len(organizationAllColumns) == len(organizationPrimaryKeyColumns) {
 		t.Skip("Skipping table with only primary key columns")
 	}
 
 	seed := randomize.NewSeed()
 	var err error
 	// Attempt the INSERT side of an UPSERT
-	o := User{}
-	if err = randomize.Struct(seed, &o, userDBTypes, true); err != nil {
-		t.Errorf("Unable to randomize User struct: %s", err)
+	o := Organization{}
+	if err = randomize.Struct(seed, &o, organizationDBTypes, true); err != nil {
+		t.Errorf("Unable to randomize Organization struct: %s", err)
 	}
 
 	ctx := context.Background()
 	tx := MustTx(boil.BeginTx(ctx, nil))
 	defer func() { _ = tx.Rollback() }()
 	if err = o.Upsert(ctx, tx, false, nil, boil.Infer(), boil.Infer()); err != nil {
-		t.Errorf("Unable to upsert User: %s", err)
+		t.Errorf("Unable to upsert Organization: %s", err)
 	}
 
-	count, err := Users().Count(ctx, tx)
+	count, err := Organizations().Count(ctx, tx)
 	if err != nil {
 		t.Error(err)
 	}
@@ -1868,15 +1698,15 @@ func testUsersUpsert(t *testing.T) {
 	}
 
 	// Attempt the UPDATE side of an UPSERT
-	if err = randomize.Struct(seed, &o, userDBTypes, false, userPrimaryKeyColumns...); err != nil {
-		t.Errorf("Unable to randomize User struct: %s", err)
+	if err = randomize.Struct(seed, &o, organizationDBTypes, false, organizationPrimaryKeyColumns...); err != nil {
+		t.Errorf("Unable to randomize Organization struct: %s", err)
 	}
 
 	if err = o.Upsert(ctx, tx, true, nil, boil.Infer(), boil.Infer()); err != nil {
-		t.Errorf("Unable to upsert User: %s", err)
+		t.Errorf("Unable to upsert Organization: %s", err)
 	}
 
-	count, err = Users().Count(ctx, tx)
+	count, err = Organizations().Count(ctx, tx)
 	if err != nil {
 		t.Error(err)
 	}

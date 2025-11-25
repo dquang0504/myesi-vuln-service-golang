@@ -1,0 +1,32 @@
+# myesi-vuln-service-golang/Dockerfile  (PROD)
+
+# ---------- STAGE 1: Build ----------
+FROM golang:1.25-alpine AS builder
+
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+RUN go install github.com/swaggo/swag/cmd/swag@latest \
+    && swag init -g cmd/main.go -o docs
+
+RUN go build -o vuln-service ./cmd/main.go
+
+# ---------- STAGE 2: Runtime ----------
+FROM alpine:3.20
+
+WORKDIR /app
+
+RUN apk add --no-cache python3 py3-pip git bash curl ca-certificates \
+    && pip install --no-cache-dir semgrep bandit \
+    && semgrep --version && bandit --version
+
+COPY --from=builder /app/vuln-service .
+
+RUN adduser -D appuser
+USER appuser
+
+EXPOSE 8003
+CMD ["./vuln-service"]

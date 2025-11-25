@@ -4,13 +4,19 @@
 package models
 
 var TableNames = struct {
-	AlembicVersion  string
-	Sboms           string
-	Users           string
-	Vulnerabilities string
+	AlembicVersion      string
+	OrganizationMembers string
+	Organizations       string
+	Projects            string
+	Sboms               string
+	Users               string
+	Vulnerabilities     string
 }{
-	AlembicVersion:  "alembic_version",
-	Sboms:           "sboms",
-	Users:           "users",
-	Vulnerabilities: "vulnerabilities",
+	AlembicVersion:      "alembic_version",
+	OrganizationMembers: "organization_members",
+	Organizations:       "organizations",
+	Projects:            "projects",
+	Sboms:               "sboms",
+	Users:               "users",
+	Vulnerabilities:     "vulnerabilities",
 }
