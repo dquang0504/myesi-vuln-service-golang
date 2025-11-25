@@ -16,6 +16,7 @@ import (
 	"myesi-vuln-service-golang/internal/db"
 	"myesi-vuln-service-golang/internal/redis"
 	"myesi-vuln-service-golang/internal/scheduler"
+	"myesi-vuln-service-golang/internal/services"
 	"os"
 	"os/signal"
 	"syscall"
@@ -43,10 +44,13 @@ func main() {
 	}()
 	//init scheduler
 	go scheduler.StartDailyScheduler()
+	go scheduler.StartRepoCleanupScheduler()
 
 	if err := consumer.InitMetrics(); err != nil {
 		log.Fatalf("failed to init metrics: %v", err)
 	}
+
+	go services.StartCronJobs()
 
 	//start API
 	app := fiber.New()
@@ -58,7 +62,10 @@ func main() {
 		ExposeHeaders:    "Content-Length",
 		AllowCredentials: true, // vẫn giữ true nếu cần cookie / token
 	}))
-	v1.RegisterVulnRoutes(app)
+
+	api := app.Group("/api/vuln")
+	v1.RegisterAnalystRoutes(api)
+	v1.RegisterVulnRoutes(api)
 
 	// Swagger UI
 	app.Get("/swagger/*", fiberSwagger.HandlerDefault)
