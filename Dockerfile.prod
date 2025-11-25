@@ -20,7 +20,7 @@ FROM alpine:3.20
 WORKDIR /app
 
 RUN apk add --no-cache python3 py3-pip git bash curl ca-certificates \
-    && pip install --no-cache-dir semgrep bandit \
+    && pip install --no-cache-dir --break-system-packages semgrep bandit \
     && semgrep --version && bandit --version
 
 COPY --from=builder /app/vuln-service .
