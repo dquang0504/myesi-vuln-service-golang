@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log"
 	"myesi-vuln-service-golang/internal/db"
 	"myesi-vuln-service-golang/internal/schemas"
+	"myesi-vuln-service-golang/utils"
 	"strconv"
 	"strings"
 	"time"
@@ -17,13 +19,12 @@ func RegisterAnalystRoutes(r fiber.Router) {
 	r.Post("/assign", createAssignment)
 	r.Post("/assign/bulk", bulkAssign)
 	r.Get("/assignments", listAssignments)
-	r.Patch("/assignments/:id", updateAssignment)
-
 	r.Get("/triage", analystTriage)
 
 	r.Post("/code-finding/assign", createCodeFindingAssignment)
 	r.Post("/code-finding/assign/bulk", bulkAssignCodeFinding)
 	r.Patch("/code-finding/assignments/:id", updateCodeFindingAssignment)
+	r.Patch("/assignments/:id", updateAssignment)
 }
 
 func createAssignment(c *fiber.Ctx) error {
@@ -145,6 +146,22 @@ func createAssignment(c *fiber.Ctx) error {
 		})
 	}
 
+	if orgID, project := loadOrgAndProjectForVuln(ctx, req.VulnerabilityID); orgID > 0 {
+		go utils.PublishAssignmentNotification(utils.AssignmentNotificationPayload{
+			Type:           "vulnerability.assignment",
+			OrganizationID: orgID,
+			UserID:         req.AssigneeID,
+			Severity:       req.Priority,
+			OccurredAt:     time.Now().UTC(),
+			Payload: map[string]interface{}{
+				"assignment_id":    a.ID,
+				"vulnerability_id": req.VulnerabilityID,
+				"project":          project,
+				"action_url":       "/developer/assignments",
+			},
+		})
+	}
+
 	return c.Status(fiber.StatusCreated).JSON(a)
 }
 
@@ -230,6 +247,27 @@ func bulkAssign(c *fiber.Ctx) error {
 
 	if err := tx.Commit(); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// Publish notifications for each assigned vulnerability
+	for _, vid := range assigned {
+		if orgID, project := loadOrgAndProjectForVuln(ctx, vid); orgID > 0 {
+			var assignID int64
+			_ = db.Conn.QueryRowContext(ctx, `SELECT id FROM vulnerability_assignments WHERE vulnerability_id=$1`, vid).Scan(&assignID)
+			go utils.PublishAssignmentNotification(utils.AssignmentNotificationPayload{
+				Type:           "vulnerability.assignment",
+				OrganizationID: orgID,
+				UserID:         req.AssigneeID,
+				Severity:       req.Priority,
+				OccurredAt:     time.Now().UTC(),
+				Payload: map[string]interface{}{
+					"assignment_id":    assignID,
+					"vulnerability_id": vid,
+					"project":          project,
+					"action_url":       "/developer/assignments",
+				},
+			})
+		}
 	}
 
 	return c.JSON(fiber.Map{
@@ -505,7 +543,7 @@ func analystTriage(c *fiber.Ctx) error {
 	}
 
 	// ========= 1) VULNERABILITIES PART =========
-	where := []string{"v.is_active = TRUE"}
+	where := []string{"1 = 1"}
 	args := []interface{}{}
 	idx := 1
 
@@ -793,6 +831,40 @@ func analystTriage(c *fiber.Ctx) error {
 	return c.JSON(resp)
 }
 
+// loadOrgAndProjectForVuln resolves organization_id and project name for a vulnerability.
+func loadOrgAndProjectForVuln(ctx context.Context, vulnID int64) (int64, string) {
+	var orgID sql.NullInt64
+	var project sql.NullString
+	err := db.Conn.QueryRowContext(ctx, `
+        SELECT p.organization_id, v.project_name
+        FROM vulnerabilities v
+        JOIN sboms s ON v.sbom_id = s.id
+        JOIN projects p ON s.project_id = p.id
+        WHERE v.id=$1
+    `, vulnID).Scan(&orgID, &project)
+	if err != nil {
+		log.Printf("[NOTIFY] cannot resolve org/project for vuln %d: %v", vulnID, err)
+		return 0, ""
+	}
+	return orgID.Int64, project.String
+}
+
+// loadOrgForProject finds organization_id via project name (for code findings).
+func loadOrgForProject(ctx context.Context, projectName string) int64 {
+	var orgID sql.NullInt64
+	if err := db.Conn.QueryRowContext(ctx, `SELECT organization_id FROM projects WHERE name=$1 LIMIT 1`, projectName).Scan(&orgID); err != nil {
+		log.Printf("[NOTIFY] cannot resolve org for project %s: %v", projectName, err)
+		return 0
+	}
+	return orgID.Int64
+}
+
+func loadProjectForCodeFinding(ctx context.Context, cfID int64) string {
+	var project sql.NullString
+	_ = db.Conn.QueryRowContext(ctx, `SELECT project_name FROM code_findings WHERE id=$1`, cfID).Scan(&project)
+	return project.String
+}
+
 func createCodeFindingAssignment(c *fiber.Ctx) error {
 	var req schemas.CreateCodeFindingAssignmentReq
 	if err := c.BodyParser(&req); err != nil {
@@ -824,11 +896,12 @@ func createCodeFindingAssignment(c *fiber.Ctx) error {
 	ctx := context.Background()
 
 	var tmp int64
+	var projectName string
 	if err := db.Conn.QueryRowContext(
 		ctx,
-		"SELECT id FROM code_findings WHERE id = $1",
+		"SELECT id, project_name FROM code_findings WHERE id = $1",
 		req.CodeFindingID,
-	).Scan(&tmp); err != nil {
+	).Scan(&tmp, &projectName); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return c.Status(404).JSON(fiber.Map{"error": "code finding not found"})
 		}
@@ -886,6 +959,25 @@ func createCodeFindingAssignment(c *fiber.Ctx) error {
 		&a.UpdatedAt,
 	); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	if orgID := loadOrgForProject(ctx, projectName); orgID > 0 {
+		go utils.PublishAssignmentNotification(utils.AssignmentNotificationPayload{
+			Type:           "code_finding.assignment",
+			OrganizationID: orgID,
+			UserID:         req.AssigneeID,
+			Severity:       req.Priority,
+			OccurredAt:     time.Now().UTC(),
+			Payload: map[string]interface{}{
+				"assignment_id":     a.ID,
+				"code_finding_id":   req.CodeFindingID,
+				"project":           projectName,
+				"action_url":        "/developer/assignments",
+				"assigned_by_user":  assignedBy,
+				"assignee_user_id":  req.AssigneeID,
+				"assignment_status": req.Status,
+			},
+		})
 	}
 
 	return c.Status(201).JSON(a)
@@ -971,6 +1063,28 @@ func bulkAssignCodeFinding(c *fiber.Ctx) error {
 
 	if err := tx.Commit(); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	for _, cfID := range assigned {
+		projectName := loadProjectForCodeFinding(ctx, cfID)
+		if orgID := loadOrgForProject(ctx, projectName); orgID > 0 {
+			var assignID int64
+			_ = db.Conn.QueryRowContext(ctx, `SELECT id FROM code_finding_assignments WHERE code_finding_id=$1`, cfID).Scan(&assignID)
+			go utils.PublishAssignmentNotification(utils.AssignmentNotificationPayload{
+				Type:           "code_finding.assignment",
+				OrganizationID: orgID,
+				UserID:         req.AssigneeID,
+				Severity:       req.Priority,
+				OccurredAt:     time.Now().UTC(),
+				Payload: map[string]interface{}{
+					"assignment_id":    assignID,
+					"code_finding_id":  cfID,
+					"project":          projectName,
+					"action_url":       "/developer/assignments",
+					"assigned_by_user": assignedBy,
+				},
+			})
+		}
 	}
 
 	return c.JSON(fiber.Map{

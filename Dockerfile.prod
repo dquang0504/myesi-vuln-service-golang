@@ -21,7 +21,9 @@ WORKDIR /app
 
 RUN apk add --no-cache python3 py3-pip git bash curl ca-certificates \
     && pip install --no-cache-dir --break-system-packages semgrep bandit \
-    && semgrep --version && bandit --version
+    && semgrep --version && bandit --version \
+    && curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin \
+    && grype version
 
 COPY --from=builder /app/vuln-service .
 

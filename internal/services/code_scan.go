@@ -3,6 +3,7 @@ package services
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/robfig/cron/v3"
 	"github.com/segmentio/kafka-go"
@@ -49,6 +51,7 @@ type CodeScanRequest struct {
 	Tool           string `json:"tool"`         // semgrep | bandit
 	GithubToken    string `json:"github_token"` // optional — prefer user token
 	OrganizationID int    `json:"organization_id"`
+	UserID         int    `json:"user_id,omitempty"` // used to invalidate bad GitHub token
 }
 
 // ==== Repo cache config =====================================================
@@ -81,10 +84,9 @@ func gitCloneRepo(ctx context.Context, cloneURL, dir, branch string) error {
 	args = append(args, cloneURL, dir)
 
 	cmd := exec.CommandContext(ctx, "git", args...)
-	stdout, _ := cmd.StdoutPipe()
-	stderr, _ := cmd.StderrPipe()
-	go io.Copy(os.Stdout, stdout)
-	go io.Copy(os.Stderr, stderr)
+	var buf bytes.Buffer
+	cmd.Stdout = io.MultiWriter(os.Stdout, &buf)
+	cmd.Stderr = io.MultiWriter(os.Stderr, &buf)
 
 	log.Printf("[SCAN] git %v", args)
 	if err := cmd.Start(); err != nil {
@@ -95,7 +97,7 @@ func gitCloneRepo(ctx context.Context, cloneURL, dir, branch string) error {
 			_ = cmd.Process.Kill()
 			return fmt.Errorf("git clone timeout: %w", ctx.Err())
 		}
-		return fmt.Errorf("git clone failed: %w", err)
+		return fmt.Errorf("git clone failed: %w, output: %s", err, buf.String())
 	}
 	return nil
 }
@@ -156,10 +158,13 @@ func prepareRepo(ctx context.Context, projectID int, projectName, repoURL, githu
 
 	dir := filepath.Join(repoBaseDir, fmt.Sprintf("%d", projectID))
 
+	// sanitize repo url to avoid hidden chars
+	repoURL = sanitizeURL(repoURL)
+
 	// input token if is GitHub HTTPS
 	cloneURL := repoURL
 	if githubToken != "" && strings.Contains(repoURL, "github.com") && strings.HasPrefix(repoURL, "https://") {
-		cloneURL = strings.Replace(repoURL, "https://", "https://"+githubToken+"@", 1)
+		cloneURL = strings.Replace(repoURL, "https://", "https://"+strings.TrimSpace(githubToken)+"@", 1)
 	}
 
 	branch := getDefaultBranch(ctx, projectID, projectName)
@@ -199,8 +204,47 @@ func prepareRepo(ctx context.Context, projectID int, projectName, repoURL, githu
 	return dir, nil
 }
 
+func sanitizeURL(s string) string {
+	s = strings.TrimSpace(s)
+	// remove zero-width and control-like chars that break git auth
+	clean := strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1
+		}
+		// invisible format chars (Cf)
+		if unicode.Is(unicode.Cf, r) {
+			return -1
+		}
+		return r
+	}, s)
+	return clean
+}
+
+// resolveGithubToken picks the best available token: explicit > user token in DB > env GITHUB_TOKEN.
+func resolveGithubToken(ctx context.Context, token string, userID int) string {
+	if token = strings.TrimSpace(token); token != "" {
+		return token
+	}
+
+	// lookup user token from DB
+	if userID > 0 {
+		var userToken sql.NullString
+		err := db.Conn.QueryRowContext(ctx, "SELECT github_token FROM users WHERE id=$1", userID).Scan(&userToken)
+		if err == nil && userToken.Valid && strings.TrimSpace(userToken.String) != "" {
+			return strings.TrimSpace(userToken.String)
+		}
+	}
+
+	// fallback env
+	if envToken := strings.TrimSpace(os.Getenv("GITHUB_TOKEN")); envToken != "" {
+		return envToken
+	}
+
+	return ""
+}
+
 // RunCodeScan executes Semgrep or Bandit and sends event to Kafka
-func RunCodeScan(projectName, repoURL, tool, githubToken string) error {
+func RunCodeScan(projectName, repoURL, tool, githubToken string, userID int) error {
 	start := time.Now()
 	log.Printf("[SCAN] Starting code scan for %s using %s", projectName, tool)
 
@@ -218,14 +262,17 @@ func RunCodeScan(projectName, repoURL, tool, githubToken string) error {
 		return err
 	}
 
-	findings, manifests, err := ExecuteScanner(tool, repoURL, githubToken, projectName, projectID)
+	// Resolve GitHub token: prefer provided, else user token, else env.
+	githubToken = resolveGithubToken(ctx, githubToken, userID)
+
+	findings, manifests, err := ExecuteScanner(tool, repoURL, githubToken, projectName, projectID, userID)
 	if err != nil {
 		log.Printf("[SCAN][ERR] %v", err)
 		return err
 	}
 
 	// Save to DB
-	SaveCodeFindings(projectName, findings)
+	SaveCodeFindings(projectID, projectName, findings)
 
 	// Publish Kafka event (with manifests)
 	err = PublishCodeScanEvent(projectID, projectName, findings, manifests)
@@ -241,7 +288,7 @@ func RunCodeScan(projectName, repoURL, tool, githubToken string) error {
 }
 
 // ExecuteScanner runs semgrep or bandit and returns findings + discovered manifests
-func ExecuteScanner(tool, target, githubToken, projectName string, projectID int) ([]map[string]interface{}, []Manifest, error) {
+func ExecuteScanner(tool, target, githubToken, projectName string, projectID int, userID int) ([]map[string]interface{}, []Manifest, error) {
 	if tool != "semgrep" && tool != "bandit" {
 		return nil, nil, fmt.Errorf("unsupported tool: %s", tool)
 	}
@@ -255,6 +302,17 @@ func ExecuteScanner(tool, target, githubToken, projectName string, projectID int
 	dir, err := prepareRepo(ctx, projectID, projectName, target, githubToken)
 	if err != nil {
 		log.Printf("[SCAN][ERR] prepareRepo failed: %v", err)
+		// If auth failure, clear stored GitHub token to force reconnect
+		if userID > 0 {
+			lower := strings.ToLower(err.Error())
+			if strings.Contains(lower, "could not read password") || strings.Contains(lower, "authentication") {
+				if _, dbErr := db.Conn.ExecContext(ctx, "UPDATE users SET github_token = NULL WHERE id = $1", userID); dbErr != nil {
+					log.Printf("[SCAN][WARN] failed to clear github_token for user %d: %v", userID, dbErr)
+				} else {
+					log.Printf("[SCAN][INFO] Cleared github_token for user %d due to auth failure", userID)
+				}
+			}
+		}
 		return nil, nil, err
 	}
 	log.Printf("[SCAN] Using repo at %s", dir)
@@ -423,7 +481,7 @@ func PublishCodeScanEvent(projectID int, projectName string, findings []map[stri
 }
 
 // SaveCodeFindings persists scan results into DB
-func SaveCodeFindings(project string, findings []map[string]interface{}) {
+func SaveCodeFindings(projectID int, project string, findings []map[string]interface{}) {
 	if len(findings) == 0 {
 		return
 	}
@@ -462,14 +520,16 @@ func SaveCodeFindings(project string, findings []map[string]interface{}) {
 		}
 		refJSON, _ := json.Marshal(refLinks)
 
-		_, _ = db.Conn.ExecContext(context.Background(), `
+		if _, err := db.Conn.ExecContext(context.Background(), `
 			INSERT INTO code_findings (
-				project_name, rule_id, rule_title, severity, confidence, category,
+				project_id, project_name, rule_id, rule_title, severity, confidence, category,
 				message, file_path, start_line, end_line, code_snippet, reference_links, created_at
 			)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
-		`, project, checkID, message, severity, confidence, category,
-			message, path, startLine, endLine, codeSnippet, refJSON)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
+		`, projectID, project, checkID, message, severity, confidence, category,
+			message, path, startLine, endLine, codeSnippet, refJSON); err != nil {
+			log.Printf("[SCAN][ERR] failed to insert code finding for project=%s: %v", project, err)
+		}
 	}
 }
 
@@ -509,7 +569,7 @@ func StartCronJobs() {
 		for _, p := range projects {
 			// RunCodeScan hiện tại lookup projectID từ name,
 			// vẫn dùng được, nhưng chúng ta đã có ID nếu sau này muốn tối ưu thêm.
-			go RunCodeScan(p.Name, p.RepoURL, "semgrep", githubToken)
+			go RunCodeScan(p.Name, p.RepoURL, "semgrep", githubToken, 0)
 		}
 	})
 	if err != nil {
