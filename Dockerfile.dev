@@ -7,7 +7,9 @@ WORKDIR /app
 RUN apk add --no-cache python3 py3-pip git bash curl ca-certificates \
     && pip install --no-cache-dir --break-system-packages semgrep bandit \
     && semgrep scan --config auto --quiet --dry-run || true \
-    && bandit --version
+    && bandit --version \
+    && curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin \
+    && grype version
 
 # ⚙️ Pre-install semgrep rulesets cho Golang + JS/TS + Python
 RUN semgrep --config p/golang --quiet || true \

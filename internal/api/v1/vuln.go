@@ -2,6 +2,7 @@ package v1
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -113,40 +114,133 @@ func refreshVuln(c *fiber.Ctx) error {
 // List tất cả vuln (hoặc theo project_name)
 func ListVulnerabilities(c *fiber.Ctx) error {
 	ctx := context.Background()
-	projectQuery := c.Query("project_name")
-	limit := c.Query("limit", "200")
+	projectQuery := strings.TrimSpace(c.Query("project_name"))
+	search := strings.TrimSpace(c.Query("q"))
+	severity := strings.ToLower(strings.TrimSpace(c.Query("severity")))
+	source := strings.ToLower(strings.TrimSpace(c.Query("source")))
+	codeFinding := strings.ToLower(strings.TrimSpace(c.Query("code_findings")))
 
-	// 1) Query all projects (LEFT JOIN vulnerabilities)
-	query := `
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	if page < 1 {
+		page = 1
+	}
+	pageSize, _ := strconv.Atoi(c.Query("page_size", "10"))
+	if pageSize <= 0 || pageSize > 100 {
+		pageSize = 10
+	}
+	offset := (page - 1) * pageSize
+
+	where := []string{"p.is_scanned = TRUE"}
+	args := []any{}
+	argIdx := 1
+
+	if projectQuery != "" && projectQuery != "all" {
+		where = append(where, fmt.Sprintf("p.name = $%d", argIdx))
+		args = append(args, projectQuery)
+		argIdx++
+	}
+	if search != "" {
+		where = append(where, fmt.Sprintf("(p.name ILIKE $%d)", argIdx))
+		args = append(args, "%"+search+"%")
+		argIdx++
+	}
+	if severity != "" && severity != "all" {
+		where = append(where, fmt.Sprintf("EXISTS (SELECT 1 FROM vulnerabilities v2 WHERE v2.project_name = p.name AND v2.is_active = TRUE AND LOWER(v2.severity) = $%d)", argIdx))
+		args = append(args, severity)
+		argIdx++
+	}
+	if source != "" && source != "all" {
+		// prefer sboms.source; fallback to osv_metadata->>'source' if sbom missing
+		where = append(where, fmt.Sprintf(`
+            (
+                EXISTS (SELECT 1 FROM sboms s WHERE s.project_id = p.id AND LOWER(s.source) = $%d)
+                OR EXISTS (SELECT 1 FROM vulnerabilities v3 WHERE v3.project_name = p.name AND v3.is_active = TRUE AND LOWER(v3.osv_metadata->>'source') = $%d)
+            )
+        `, argIdx, argIdx))
+		args = append(args, source)
+		argIdx++
+	}
+	if codeFinding == "has" {
+		where = append(where, "EXISTS (SELECT 1 FROM code_findings cf WHERE cf.project_name = p.name)")
+	} else if codeFinding == "none" {
+		where = append(where, "NOT EXISTS (SELECT 1 FROM code_findings cf WHERE cf.project_name = p.name)")
+	}
+
+	whereSQL := strings.Join(where, " AND ")
+
+	countQuery := `SELECT COUNT(*) FROM projects p WHERE ` + whereSQL
+	var totalProjects int64
+	if err := db.Conn.QueryRowContext(ctx, countQuery, args...).Scan(&totalProjects); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	projectQuerySQL := `
         SELECT 
-            p.name, p.last_vuln_scan,
-            v.id, v.sbom_id, v.component_name, v.component_version,
-            v.vuln_id, v.severity, v.cvss_vector, v.osv_metadata,
-            v.fix_available, v.fixed_version,
-            v.updated_at,
-            COALESCE(r.score, 0)
+            p.id,
+            p.name,
+            p.last_vuln_scan,
+            COALESCE(SUM(CASE WHEN v.is_active THEN 1 ELSE 0 END),0) AS total_vulns,
+            COALESCE(AVG(CASE WHEN v.is_active THEN r.score END),0)   AS avg_risk_score,
+            COALESCE(MAX(
+                CASE LOWER(v.severity)
+                    WHEN 'critical' THEN 5
+                    WHEN 'high' THEN 4
+                    WHEN 'moderate' THEN 3
+                    WHEN 'low' THEN 2
+                    ELSE 1
+                END
+            ),1) as sev_rank,
+            COALESCE(cf_counts.code_findings,0) AS code_findings
         FROM projects p
         LEFT JOIN vulnerabilities v
-            ON v.project_name = p.name
-			AND v.is_active = TRUE
+            ON v.project_name = p.name AND v.is_active = TRUE
         LEFT JOIN risk_scores r
             ON v.sbom_id = r.sbom_id
            AND v.component_name = r.component_name
            AND v.component_version = r.component_version
-        WHERE p.is_scanned = TRUE
-    `
-	args := []any{}
-	if projectQuery != "" && projectQuery != "all" {
-		query += " AND p.name = $1"
-		args = append(args, projectQuery)
-	}
-	query += " ORDER BY v.updated_at DESC LIMIT " + limit
+        LEFT JOIN (
+            SELECT project_id, COUNT(*) AS code_findings
+            FROM code_findings
+            GROUP BY project_id
+        ) cf_counts ON cf_counts.project_id = p.id
+        WHERE ` + whereSQL + `
+        GROUP BY p.id, p.name, p.last_vuln_scan, cf_counts.code_findings
+        ORDER BY sev_rank DESC, total_vulns DESC
+        LIMIT $` + strconv.Itoa(argIdx) + ` OFFSET $` + strconv.Itoa(argIdx+1)
 
-	rows, err := db.Conn.QueryContext(ctx, query, args...)
+	argsWithPaging := append([]any{}, args...)
+	argsWithPaging = append(argsWithPaging, pageSize, offset)
+
+	rows, err := db.Conn.QueryContext(ctx, projectQuerySQL, argsWithPaging...)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 	defer rows.Close()
+
+	type ProjectRow struct {
+		ID           int
+		Name         string
+		LastScan     *time.Time
+		TotalVulns   int
+		AvgRiskScore float64
+		SevRank      int
+		CodeFindings int
+	}
+	projectRows := []ProjectRow{}
+	for rows.Next() {
+		var pr ProjectRow
+		if err := rows.Scan(&pr.ID, &pr.Name, &pr.LastScan, &pr.TotalVulns, &pr.AvgRiskScore, &pr.SevRank, &pr.CodeFindings); err == nil {
+			projectRows = append(projectRows, pr)
+		}
+	}
+
+	// Fetch vulnerabilities for the current page projects
+	projectIDs := []int{}
+	projectNames := []string{}
+	for _, pr := range projectRows {
+		projectIDs = append(projectIDs, pr.ID)
+		projectNames = append(projectNames, pr.Name)
+	}
 
 	type Vuln struct {
 		ID        *int64                 `json:"id,omitempty"`
@@ -165,96 +259,147 @@ func ListVulnerabilities(c *fiber.Ctx) error {
 	}
 
 	vulns := []Vuln{}
-	projectStats := map[string]*struct {
-		Total      int
-		Avg        float64
-		Highest    string
-		LastScan   *time.Time
-		Scores     []float64
-		Severities []string
-	}{}
-
-	for rows.Next() {
-		var v Vuln
-		var osvRaw []byte
-		var lastScan *time.Time
-		var projectName string
-
-		err := rows.Scan(
-			&projectName, &lastScan,
-			&v.ID, &v.SbomID, &v.Component, &v.Version,
-			&v.CVE, &v.Severity, &v.CVSS, &osvRaw,
-			&v.FixAvail, &v.FixedVer,
-			&v.UpdatedAt, &v.RiskScore,
-		)
-		if err != nil {
-			continue
+	if len(projectNames) > 0 {
+		placeholders := []string{}
+		argsV := []any{}
+		for i, name := range projectNames {
+			placeholders = append(placeholders, "$"+strconv.Itoa(i+1))
+			argsV = append(argsV, name)
+		}
+		vQuery := `
+            SELECT 
+                v.id, v.sbom_id, v.project_name, v.component_name, v.component_version,
+                v.vuln_id, v.severity, v.cvss_vector, v.osv_metadata,
+                v.fix_available, v.fixed_version, v.updated_at,
+                COALESCE(r.score, 0)
+            FROM vulnerabilities v
+            LEFT JOIN sboms s ON s.id = v.sbom_id
+            LEFT JOIN risk_scores r
+              ON v.sbom_id = r.sbom_id
+             AND v.component_name = r.component_name
+             AND v.component_version = r.component_version
+            WHERE v.is_active = TRUE AND v.project_name IN (` + strings.Join(placeholders, ",") + `)
+        `
+		if severity != "" && severity != "all" {
+			vQuery += " AND LOWER(v.severity) = LOWER($" + strconv.Itoa(len(argsV)+1) + ")"
+			argsV = append(argsV, severity)
+		}
+		if source != "" && source != "all" {
+			vQuery += " AND (LOWER(s.source) = LOWER($" + strconv.Itoa(len(argsV)+1) + ") OR LOWER(v.osv_metadata->>'source') = LOWER($" + strconv.Itoa(len(argsV)+1) + "))"
+			argsV = append(argsV, source)
 		}
 
-		v.Project = projectName
-		if len(osvRaw) > 0 {
-			_ = json.Unmarshal(osvRaw, &v.OSVMeta)
-		}
-
-		vulns = append(vulns, v)
-
-		if projectStats[projectName] == nil {
-			projectStats[projectName] = &struct {
-				Total      int
-				Avg        float64
-				Highest    string
-				LastScan   *time.Time
-				Scores     []float64
-				Severities []string
-			}{Highest: "none", LastScan: lastScan}
-		}
-
-		if v.ID != nil {
-			projectStats[projectName].Total++
-			projectStats[projectName].Scores = append(projectStats[projectName].Scores, v.RiskScore)
-			if v.Severity != nil {
-				projectStats[projectName].Severities = append(projectStats[projectName].Severities, strings.ToLower(*v.Severity))
+		vRows, err := db.Conn.QueryContext(ctx, vQuery, argsV...)
+		if err == nil {
+			defer vRows.Close()
+			for vRows.Next() {
+				var v Vuln
+				var osvRaw []byte
+				if err := vRows.Scan(
+					&v.ID, &v.SbomID, &v.Project, &v.Component, &v.Version,
+					&v.CVE, &v.Severity, &v.CVSS, &osvRaw,
+					&v.FixAvail, &v.FixedVer, &v.UpdatedAt, &v.RiskScore,
+				); err == nil {
+					if len(osvRaw) > 0 {
+						_ = json.Unmarshal(osvRaw, &v.OSVMeta)
+					}
+					vulns = append(vulns, v)
+				}
 			}
 		}
 	}
 
-	projects := []fiber.Map{}
-	severityOrder := []string{"critical", "high", "moderate", "low", "none"}
-
-	for p, st := range projectStats {
-		sum := 0.0
-		for _, s := range st.Scores {
-			sum += s
+	// Fetch code findings for current page projects (lightweight fields)
+	type CodeFinding struct {
+		ID         int64  `json:"id"`
+		Project    string `json:"project_name"`
+		RuleID     string `json:"rule_id"`
+		RuleTitle  string `json:"rule_title"`
+		Severity   string `json:"severity"`
+		FilePath   string `json:"file_path"`
+		StartLine  int    `json:"start_line"`
+		EndLine    int    `json:"end_line"`
+		Category   string `json:"category"`
+		Confidence string `json:"confidence"`
+		Message    string `json:"message"`
+	}
+	codeFindings := []CodeFinding{}
+	if len(projectIDs) > 0 {
+		placeholders := []string{}
+		argsCF := []any{}
+		for i, id := range projectIDs {
+			placeholders = append(placeholders, "$"+strconv.Itoa(i+1))
+			argsCF = append(argsCF, id)
 		}
-
-		highest := "none"
-		for _, lvl := range severityOrder {
-			for _, actual := range st.Severities {
-				if actual == lvl {
-					highest = lvl
-					goto DONE
+		cfQuery := `
+            SELECT id,
+                   COALESCE(project_name, '') AS project_name,
+                   COALESCE(project_id, 0)    AS project_id,
+                   COALESCE(rule_id, '')      AS rule_id,
+                   COALESCE(rule_title, '')   AS rule_title,
+                   COALESCE(severity, '')     AS severity,
+                   COALESCE(file_path, '')    AS file_path,
+                   COALESCE(start_line, 0)    AS start_line,
+                   COALESCE(end_line, 0)      AS end_line,
+                   COALESCE(category, '')     AS category,
+                   COALESCE(confidence, '')   AS confidence,
+                   COALESCE(message, '')      AS message
+            FROM code_findings
+            WHERE project_id IN (` + strings.Join(placeholders, ",") + `)
+            ORDER BY created_at DESC
+            LIMIT 500
+        `
+		cfRows, err := db.Conn.QueryContext(ctx, cfQuery, argsCF...)
+		if err == nil {
+			defer cfRows.Close()
+			for cfRows.Next() {
+				var cf CodeFinding
+				var projectID int
+				if err := cfRows.Scan(
+					&cf.ID, &cf.Project, &projectID, &cf.RuleID, &cf.RuleTitle, &cf.Severity, &cf.FilePath, &cf.StartLine, &cf.EndLine,
+					&cf.Category, &cf.Confidence, &cf.Message,
+				); err == nil {
+					codeFindings = append(codeFindings, cf)
 				}
 			}
 		}
-	DONE:
+	}
 
-		avg := 0.0
-		if st.Total > 0 {
-			avg = math.Round((sum/float64(st.Total))*100) / 100
+	// Build project payloads
+	toSev := func(rank int) string {
+		switch rank {
+		case 5:
+			return "critical"
+		case 4:
+			return "high"
+		case 3:
+			return "moderate"
+		case 2:
+			return "low"
+		default:
+			return "none"
 		}
+	}
 
+	projects := []fiber.Map{}
+	for _, pr := range projectRows {
 		projects = append(projects, fiber.Map{
-			"project_name":     p,
-			"total_vulns":      st.Total,
-			"avg_risk_score":   avg,
-			"highest_severity": highest,
-			"last_scan":        st.LastScan,
+			"project_name":     pr.Name,
+			"total_vulns":      pr.TotalVulns,
+			"avg_risk_score":   math.Round(pr.AvgRiskScore*100) / 100,
+			"highest_severity": toSev(pr.SevRank),
+			"last_scan":        pr.LastScan,
+			"code_findings":    pr.CodeFindings,
 		})
 	}
 
 	return c.JSON(fiber.Map{
 		"projects":        projects,
 		"vulnerabilities": vulns,
+		"code_findings":   codeFindings,
+		"page":            page,
+		"page_size":       pageSize,
+		"total":           totalProjects,
 	})
 }
 
@@ -269,7 +414,7 @@ func scanCode(c *fiber.Ctx) error {
 
 	orgID := req.OrganizationID
 
-	// 2) Acquire scan lock (to prevent concurrent scan start)
+	// 1) Acquire scan lock (to prevent concurrent scan start)
 	locked, _ := utils.AcquireScanLock(orgID, context.Background())
 	if !locked {
 		// revert DB usage consumption since scan not started
@@ -284,21 +429,45 @@ func scanCode(c *fiber.Ctx) error {
 	}
 	defer utils.ReleaseScanLock(orgID, context.Background())
 
-	// 3) Optional legacy Redis running-limit
-	running, err := utils.GetRunningCount(orgID, context.Background())
-	if err != nil {
-		db.Conn.ExecContext(c.Context(),
+	// 2) Check & consume project_scan quota here
+	var allowed bool
+	var msg string
+	var nextReset sql.NullTime
+
+	row := db.Conn.QueryRowContext(
+		c.Context(),
+		"SELECT allowed, message, next_reset FROM check_and_consume_usage($1,$2,$3)",
+		orgID, "project_scan", 1,
+	)
+
+	if err := row.Scan(&allowed, &msg, &nextReset); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "usage check failed: " + err.Error()})
+	}
+
+	if !allowed {
+		return c.Status(429).JSON(fiber.Map{
+			"error": msg,
+		})
+	}
+
+	// helper để revert lại quota nếu sau đó không chạy được scan
+	revertUsage := func() {
+		db.Conn.ExecContext(
+			c.Context(),
 			"SELECT revert_usage($1,$2,$3)",
 			orgID, "project_scan", 1,
 		)
+	}
+
+	// 3) Optional legacy Redis running-limit
+	running, err := utils.GetRunningCount(orgID, context.Background())
+	if err != nil {
+		revertUsage()
 		return c.Status(500).JSON(fiber.Map{"error": "cannot check running scans"})
 	}
 
 	if running >= 5 {
-		db.Conn.ExecContext(c.Context(),
-			"SELECT revert_usage($1,$2,$3)",
-			orgID, "project_scan", 1,
-		)
+		revertUsage()
 		return c.Status(429).JSON(fiber.Map{
 			"error": "Too many scans running at the moment. Try again shortly.",
 		})
@@ -308,10 +477,17 @@ func scanCode(c *fiber.Ctx) error {
 
 	// 4) Resolve GitHub token
 	githubToken := ""
+	userID := 0
 	if user := c.Locals("user"); user != nil {
 		if u, ok := user.(map[string]interface{}); ok {
 			if t, ok2 := u["github_token"].(string); ok2 && t != "" {
 				githubToken = t
+			}
+			switch idVal := u["id"].(type) {
+			case float64:
+				userID = int(idVal)
+			case int:
+				userID = idVal
 			}
 		}
 	}
@@ -323,7 +499,7 @@ func scanCode(c *fiber.Ctx) error {
 	go func() {
 		defer utils.DecrementRunning(orgID, context.Background())
 
-		err := services.RunCodeScan(req.ProjectName, req.RepoURL, req.Tool, githubToken)
+		err := services.RunCodeScan(req.ProjectName, req.RepoURL, req.Tool, githubToken, userID)
 		if err != nil {
 			db.Conn.ExecContext(context.Background(),
 				"SELECT revert_usage($1,$2,$3)",
@@ -350,14 +526,29 @@ func getVulnerabilityTrend(c *fiber.Ctx) error {
 	ctx := context.Background()
 
 	query := `
-        SELECT
-            DATE(created_at) AS date,
-            LOWER(severity) AS severity,
-            COUNT(*) AS count
-        FROM vulnerabilities
-        WHERE created_at >= NOW() - INTERVAL '` + fmt.Sprintf("%d", days) + ` day'
-        GROUP BY DATE(created_at), LOWER(severity)
-        ORDER BY DATE(created_at)
+        WITH created_counts AS (
+            SELECT
+                DATE(created_at) AS date,
+                LOWER(severity) AS severity,
+                COUNT(*) AS count
+            FROM vulnerabilities
+            WHERE created_at >= NOW() - INTERVAL '` + fmt.Sprintf("%d", days) + ` day'
+            GROUP BY DATE(created_at), LOWER(severity)
+        ),
+        fixed_counts AS (
+            SELECT
+                DATE(updated_at) AS date,
+                'fixed' AS severity,
+                COUNT(*) AS count
+            FROM vulnerabilities
+            WHERE updated_at >= NOW() - INTERVAL '` + fmt.Sprintf("%d", days) + ` day'
+              AND is_active = FALSE
+            GROUP BY DATE(updated_at)
+        )
+        SELECT * FROM created_counts
+        UNION ALL
+        SELECT * FROM fixed_counts
+        ORDER BY date
     `
 
 	rows, err := db.Conn.QueryContext(ctx, query)
@@ -397,6 +588,7 @@ func getVulnerabilityTrend(c *fiber.Ctx) error {
 				"high":     0,
 				"moderate": 0,
 				"low":      0,
+				"fixed":    0,
 			}
 		}
 		if _, ok := trendMap[r.Date][r.Severity]; ok {
@@ -413,6 +605,7 @@ func getVulnerabilityTrend(c *fiber.Ctx) error {
 			"high":     sev["high"],
 			"moderate": sev["moderate"],
 			"low":      sev["low"],
+			"fixed":    sev["fixed"],
 		})
 	}
 
