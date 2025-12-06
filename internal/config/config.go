@@ -14,7 +14,6 @@ type Config struct {
 	KafkaTopic          string
 	DLQTopic            string
 	DatabaseURL         string
-	OSVURL              string
 	ConsumerGroup       string
 	Port                string
 	SchedulerSpec       string `yaml:"scheduler_spec"`
@@ -31,7 +30,6 @@ func LoadConfig() *Config {
 		KafkaTopic:        getEnv("KAFKA_TOPIC", "sbom-events"),
 		DLQTopic:          getEnv("DLQ_TOPIC", "sbom-events-dlq"),
 		DatabaseURL:       getEnv("DATABASE_URL", "postgres://myesi:123456789@localhost:5432/myesi_db?sslmode=disable"),
-		OSVURL:            getEnv("OSV_URL", "https://api.osv.dev/v1/querybatch"),
 		ConsumerGroup:     getEnv("CONSUMER_GROUP", "myesi-vuln-group"),
 		Port:              getEnv("PORT", "8080"),
 		RepoCleanupSpec:   "@daily",
@@ -75,13 +73,4 @@ func getEnv(key, defaultValue string) string {
 		return val
 	}
 	return defaultValue
-}
-
-// --- Map SBOM components → OSV batch format ---
-type OSVRecord struct {
-	Package struct {
-		Name      string `json:"name"`
-		Ecosystem string `json:"ecosystem"`
-	} `json:"package"`
-	Version string `json:"version"`
 }
