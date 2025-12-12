@@ -55,7 +55,20 @@ func getVulnsBySBOM(c *fiber.Ctx) error {
 			"error": "sbom_id required",
 		})
 	}
-	vulns, _ := utils.FindVulnsBySbomID(c.Context(), db.Conn, sbomID)
+
+	orgID, err := requireOrgID(c)
+	if err != nil {
+		return err
+	}
+
+	if _, err := ensureSBOMAccessible(c.Context(), sbomID, orgID); err != nil {
+		return err
+	}
+
+	vulns, err := utils.FindVulnsBySbomID(c.Context(), db.Conn, sbomID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
 
 	return c.JSON(vulns)
 }
@@ -85,6 +98,30 @@ func refreshVuln(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "sbom_id or components required"})
 	}
 
+	orgID, err := requireOrgID(c)
+	if err != nil {
+		return err
+	}
+
+	if req.SBOMID != "" {
+		projectName, err := ensureSBOMAccessible(c.Context(), req.SBOMID, orgID)
+		if err != nil {
+			return err
+		}
+		if req.Project == "" {
+			req.Project = projectName
+		}
+	}
+
+	if len(req.Components) > 0 && req.Project == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "project_name required when providing components"})
+	}
+	if req.Project != "" {
+		if _, err := ensureProjectAccessible(c.Context(), req.Project, orgID); err != nil {
+			return err
+		}
+	}
+
 	//If components present, publish event with them. Otherwise publish event referencing sbom_id only
 	w := kafka.Writer{
 		Addr:  kafka.TCP(strings.Split(config.LoadConfig().KafkaBroker, ",")...),
@@ -93,15 +130,20 @@ func refreshVuln(c *fiber.Ctx) error {
 	defer w.Close()
 
 	event := map[string]interface{}{
-		"sbom_id": req.SBOMID,
-		"project": req.Project,
+		"sbom_id":         req.SBOMID,
+		"project":         req.Project,
+		"organization_id": orgID,
 	}
 	if len(req.Components) > 0 {
 		event["components"] = req.Components
 	}
 	data, _ := json.Marshal(event)
+	key := req.SBOMID
+	if key == "" {
+		key = req.Project
+	}
 	msg := kafka.Message{
-		Key:   []byte(req.SBOMID),
+		Key:   []byte(key),
 		Value: data,
 	}
 	if err := w.WriteMessages(c.Context(), msg); err != nil {
@@ -111,8 +153,12 @@ func refreshVuln(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "refresh queued"})
 }
 
-// List tất cả vuln (hoặc theo project_name)
 func ListVulnerabilities(c *fiber.Ctx) error {
+	orgID, err := requireOrgID(c)
+	if err != nil {
+		return err
+	}
+
 	ctx := context.Background()
 	projectQuery := strings.TrimSpace(c.Query("project_name"))
 	search := strings.TrimSpace(c.Query("q"))
@@ -130,40 +176,57 @@ func ListVulnerabilities(c *fiber.Ctx) error {
 	}
 	offset := (page - 1) * pageSize
 
-	where := []string{"p.is_scanned = TRUE"}
-	args := []any{}
-	argIdx := 1
+	where := []string{"p.organization_id = $1", "p.is_scanned = TRUE", "(p.is_archived IS NULL OR p.is_archived = FALSE)"}
+	args := []any{orgID}
+	nextParam := func() string {
+		return "$" + strconv.Itoa(len(args)+1)
+	}
 
 	if projectQuery != "" && projectQuery != "all" {
-		where = append(where, fmt.Sprintf("p.name = $%d", argIdx))
+		placeholder := nextParam()
+		where = append(where, fmt.Sprintf("p.name = %s", placeholder))
 		args = append(args, projectQuery)
-		argIdx++
 	}
 	if search != "" {
-		where = append(where, fmt.Sprintf("(p.name ILIKE $%d)", argIdx))
+		placeholder := nextParam()
+		where = append(where, fmt.Sprintf("(p.name ILIKE %s)", placeholder))
 		args = append(args, "%"+search+"%")
-		argIdx++
 	}
 	if severity != "" && severity != "all" {
-		where = append(where, fmt.Sprintf("EXISTS (SELECT 1 FROM vulnerabilities v2 WHERE v2.project_name = p.name AND v2.is_active = TRUE AND LOWER(v2.severity) = $%d)", argIdx))
+		placeholder := nextParam()
+		where = append(where, fmt.Sprintf(
+			"EXISTS (SELECT 1 FROM vulnerabilities v2 WHERE v2.project_id = p.id AND v2.is_active = TRUE AND LOWER(v2.severity) = %s)",
+			placeholder,
+		))
 		args = append(args, severity)
-		argIdx++
 	}
 	if source != "" && source != "all" {
-		// prefer sboms.source; fallback to osv_metadata->>'source' if sbom missing
+		placeholder := nextParam()
 		where = append(where, fmt.Sprintf(`
-            (
-                EXISTS (SELECT 1 FROM sboms s WHERE s.project_id = p.id AND LOWER(s.source) = $%d)
-                OR EXISTS (SELECT 1 FROM vulnerabilities v3 WHERE v3.project_name = p.name AND v3.is_active = TRUE AND LOWER(v3.osv_metadata->>'source') = $%d)
+        (
+            EXISTS (
+                SELECT 1 FROM sboms s
+                WHERE s.project_id = p.id
+                  AND LOWER(s.source) = %s
             )
-        `, argIdx, argIdx))
+            OR EXISTS (
+                SELECT 1 FROM vulnerabilities v3
+                WHERE v3.project_id = p.id
+                  AND v3.is_active = TRUE
+                  AND LOWER(v3.osv_metadata->>'source') = %s
+            )
+        )
+    `, placeholder, placeholder))
 		args = append(args, source)
-		argIdx++
 	}
 	if codeFinding == "has" {
-		where = append(where, "EXISTS (SELECT 1 FROM code_findings cf WHERE cf.project_name = p.name)")
+		where = append(where,
+			"EXISTS (SELECT 1 FROM code_findings cf WHERE cf.project_id = p.id)",
+		)
 	} else if codeFinding == "none" {
-		where = append(where, "NOT EXISTS (SELECT 1 FROM code_findings cf WHERE cf.project_name = p.name)")
+		where = append(where,
+			"NOT EXISTS (SELECT 1 FROM code_findings cf WHERE cf.project_id = p.id)",
+		)
 	}
 
 	whereSQL := strings.Join(where, " AND ")
@@ -174,6 +237,8 @@ func ListVulnerabilities(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
+	limitParam := "$" + strconv.Itoa(len(args)+1)
+	offsetParam := "$" + strconv.Itoa(len(args)+2)
 	projectQuerySQL := `
         SELECT 
             p.id,
@@ -185,7 +250,7 @@ func ListVulnerabilities(c *fiber.Ctx) error {
                 CASE LOWER(v.severity)
                     WHEN 'critical' THEN 5
                     WHEN 'high' THEN 4
-                    WHEN 'moderate' THEN 3
+                    WHEN 'medium' THEN 3
                     WHEN 'low' THEN 2
                     ELSE 1
                 END
@@ -193,7 +258,7 @@ func ListVulnerabilities(c *fiber.Ctx) error {
             COALESCE(cf_counts.code_findings,0) AS code_findings
         FROM projects p
         LEFT JOIN vulnerabilities v
-            ON v.project_name = p.name AND v.is_active = TRUE
+            ON v.project_id = p.id AND v.is_active = TRUE
         LEFT JOIN risk_scores r
             ON v.sbom_id = r.sbom_id
            AND v.component_name = r.component_name
@@ -206,7 +271,7 @@ func ListVulnerabilities(c *fiber.Ctx) error {
         WHERE ` + whereSQL + `
         GROUP BY p.id, p.name, p.last_vuln_scan, cf_counts.code_findings
         ORDER BY sev_rank DESC, total_vulns DESC
-        LIMIT $` + strconv.Itoa(argIdx) + ` OFFSET $` + strconv.Itoa(argIdx+1)
+        LIMIT ` + limitParam + ` OFFSET ` + offsetParam
 
 	argsWithPaging := append([]any{}, args...)
 	argsWithPaging = append(argsWithPaging, pageSize, offset)
@@ -260,50 +325,77 @@ func ListVulnerabilities(c *fiber.Ctx) error {
 
 	vulns := []Vuln{}
 	if len(projectNames) > 0 {
-		placeholders := []string{}
-		argsV := []any{}
-		for i, name := range projectNames {
-			placeholders = append(placeholders, "$"+strconv.Itoa(i+1))
-			argsV = append(argsV, name)
-		}
-		vQuery := `
-            SELECT 
-                v.id, v.sbom_id, v.project_name, v.component_name, v.component_version,
-                v.vuln_id, v.severity, v.cvss_vector, v.osv_metadata,
-                v.fix_available, v.fixed_version, v.updated_at,
-                COALESCE(r.score, 0)
-            FROM vulnerabilities v
-            LEFT JOIN sboms s ON s.id = v.sbom_id
-            LEFT JOIN risk_scores r
-              ON v.sbom_id = r.sbom_id
-             AND v.component_name = r.component_name
-             AND v.component_version = r.component_version
-            WHERE v.is_active = TRUE AND v.project_name IN (` + strings.Join(placeholders, ",") + `)
-        `
-		if severity != "" && severity != "all" {
-			vQuery += " AND LOWER(v.severity) = LOWER($" + strconv.Itoa(len(argsV)+1) + ")"
-			argsV = append(argsV, severity)
-		}
-		if source != "" && source != "all" {
-			vQuery += " AND (LOWER(s.source) = LOWER($" + strconv.Itoa(len(argsV)+1) + ") OR LOWER(v.osv_metadata->>'source') = LOWER($" + strconv.Itoa(len(argsV)+1) + "))"
-			argsV = append(argsV, source)
-		}
+		if len(projectIDs) > 0 {
+			placeholders := []string{}
+			argsV := []any{orgID} // $1 = orgID
+			for i, id := range projectIDs {
+				placeholders = append(placeholders, "$"+strconv.Itoa(i+2)) // bắt đầu từ $2
+				argsV = append(argsV, id)
+			}
 
-		vRows, err := db.Conn.QueryContext(ctx, vQuery, argsV...)
-		if err == nil {
-			defer vRows.Close()
-			for vRows.Next() {
-				var v Vuln
-				var osvRaw []byte
-				if err := vRows.Scan(
-					&v.ID, &v.SbomID, &v.Project, &v.Component, &v.Version,
-					&v.CVE, &v.Severity, &v.CVSS, &osvRaw,
-					&v.FixAvail, &v.FixedVer, &v.UpdatedAt, &v.RiskScore,
-				); err == nil {
-					if len(osvRaw) > 0 {
-						_ = json.Unmarshal(osvRaw, &v.OSVMeta)
+			vQuery := `
+        SELECT 
+            v.id,
+            v.sbom_id,
+            v.project_name,
+            v.component_name,
+            v.component_version,
+            v.vuln_id,
+            v.severity,
+            v.cvss_vector,
+            v.osv_metadata,
+            v.fix_available,
+            v.fixed_version,
+            v.updated_at,
+            COALESCE(r.score, 0)
+        FROM vulnerabilities v
+        JOIN projects p
+          ON p.id = v.project_id
+        LEFT JOIN sboms s
+          ON s.id = v.sbom_id
+        LEFT JOIN risk_scores r
+          ON v.sbom_id = r.sbom_id
+         AND v.component_name = r.component_name
+         AND v.component_version = r.component_version
+        WHERE v.is_active = TRUE
+          AND p.organization_id = $1
+          AND p.id IN (` + strings.Join(placeholders, ",") + `)
+    `
+
+			// severity filter
+			if severity != "" && severity != "all" {
+				vQuery += " AND LOWER(v.severity) = LOWER($" + strconv.Itoa(len(argsV)+1) + ")"
+				argsV = append(argsV, severity)
+			}
+
+			// source filter
+			if source != "" && source != "all" {
+				idx := len(argsV) + 1
+				vQuery += `
+            AND (
+                LOWER(s.source) = LOWER($` + strconv.Itoa(idx) + `)
+                OR LOWER(v.osv_metadata->>'source') = LOWER($` + strconv.Itoa(idx) + `)
+            )
+        `
+				argsV = append(argsV, source)
+			}
+
+			vRows, err := db.Conn.QueryContext(ctx, vQuery, argsV...)
+			if err == nil {
+				defer vRows.Close()
+				for vRows.Next() {
+					var v Vuln
+					var osvRaw []byte
+					if err := vRows.Scan(
+						&v.ID, &v.SbomID, &v.Project, &v.Component, &v.Version,
+						&v.CVE, &v.Severity, &v.CVSS, &osvRaw,
+						&v.FixAvail, &v.FixedVer, &v.UpdatedAt, &v.RiskScore,
+					); err == nil {
+						if len(osvRaw) > 0 {
+							_ = json.Unmarshal(osvRaw, &v.OSVMeta)
+						}
+						vulns = append(vulns, v)
 					}
-					vulns = append(vulns, v)
 				}
 			}
 		}
@@ -373,7 +465,7 @@ func ListVulnerabilities(c *fiber.Ctx) error {
 		case 4:
 			return "high"
 		case 3:
-			return "moderate"
+			return "medium"
 		case 2:
 			return "low"
 		default:
@@ -412,7 +504,17 @@ func scanCode(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "project_name, repo_url, tool and organization_id required"})
 	}
 
-	orgID := req.OrganizationID
+	orgID, err := requireOrgID(c)
+	if err != nil {
+		return err
+	}
+	if req.OrganizationID == 0 {
+		req.OrganizationID = orgID
+	} else if req.OrganizationID != orgID {
+		return fiber.NewError(fiber.StatusForbidden, "Organization mismatch")
+	}
+
+	orgID = req.OrganizationID
 
 	// 1) Acquire scan lock (to prevent concurrent scan start)
 	locked, _ := utils.AcquireScanLock(orgID, context.Background())
@@ -523,35 +625,45 @@ func getVulnerabilityTrend(c *fiber.Ctx) error {
 		days = 7
 	}
 
+	orgID, err := requireOrgID(c)
+	if err != nil {
+		return err
+	}
+
 	ctx := context.Background()
+	startDate := time.Now().AddDate(0, 0, -days)
 
 	query := `
-        WITH created_counts AS (
-            SELECT
-                DATE(created_at) AS date,
-                LOWER(severity) AS severity,
-                COUNT(*) AS count
-            FROM vulnerabilities
-            WHERE created_at >= NOW() - INTERVAL '` + fmt.Sprintf("%d", days) + ` day'
-            GROUP BY DATE(created_at), LOWER(severity)
-        ),
-        fixed_counts AS (
-            SELECT
-                DATE(updated_at) AS date,
-                'fixed' AS severity,
-                COUNT(*) AS count
-            FROM vulnerabilities
-            WHERE updated_at >= NOW() - INTERVAL '` + fmt.Sprintf("%d", days) + ` day'
-              AND is_active = FALSE
-            GROUP BY DATE(updated_at)
-        )
-        SELECT * FROM created_counts
-        UNION ALL
-        SELECT * FROM fixed_counts
-        ORDER BY date
-    `
+    WITH created_counts AS (
+        SELECT
+            DATE(v.created_at) AS date,
+            LOWER(v.severity) AS severity,
+            COUNT(*) AS count
+        FROM vulnerabilities v
+        JOIN projects p ON p.id = v.project_id
+        WHERE v.created_at >= $1
+          AND p.organization_id = $2
+        GROUP BY DATE(v.created_at), LOWER(v.severity)
+    ),
+    fixed_counts AS (
+        SELECT
+            DATE(v.updated_at) AS date,
+            'fixed' AS severity,
+            COUNT(*) AS count
+        FROM vulnerabilities v
+        JOIN projects p ON p.id = v.project_id
+        WHERE v.updated_at >= $1
+          AND v.is_active = FALSE
+          AND p.organization_id = $2
+        GROUP BY DATE(v.updated_at)
+    )
+    SELECT * FROM created_counts
+    UNION ALL
+    SELECT * FROM fixed_counts
+    ORDER BY date
+`
 
-	rows, err := db.Conn.QueryContext(ctx, query)
+	rows, err := db.Conn.QueryContext(ctx, query, startDate, orgID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -586,7 +698,7 @@ func getVulnerabilityTrend(c *fiber.Ctx) error {
 			trendMap[r.Date] = map[string]int{
 				"critical": 0,
 				"high":     0,
-				"moderate": 0,
+				"medium":   0,
 				"low":      0,
 				"fixed":    0,
 			}
@@ -603,7 +715,7 @@ func getVulnerabilityTrend(c *fiber.Ctx) error {
 			"date":     date,
 			"critical": sev["critical"],
 			"high":     sev["high"],
-			"moderate": sev["moderate"],
+			"medium":   sev["medium"],
 			"low":      sev["low"],
 			"fixed":    sev["fixed"],
 		})

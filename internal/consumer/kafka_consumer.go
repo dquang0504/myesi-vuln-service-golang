@@ -11,6 +11,7 @@ import (
 	"myesi-vuln-service-golang/internal/config"
 	"myesi-vuln-service-golang/internal/redis"
 	"myesi-vuln-service-golang/internal/services"
+	orgsettings "myesi-vuln-service-golang/internal/services/orgsettings"
 	"myesi-vuln-service-golang/utils"
 	"strings"
 	"sync"
@@ -45,6 +46,7 @@ type SBOMBatchEvent struct {
 	ProjectID                int    `json:"project_id,omitempty"`
 	OrganizationID           int64  `json:"organization_id,omitempty"`
 	Source                   string `json:"source,omitempty"`
+	CodeFindingsCount        int    `json:"code_findings_count,omitempty"`
 	ProjectScanQuotaConsumed bool   `json:"project_scan_quota_consumed"`
 	SBOMRecords              []struct {
 		ID         string                   `json:"id"`
@@ -200,7 +202,7 @@ func StartConsumer(db *sql.DB) error {
 						orgID = lookupOrgIDByProject(context.Background(), db, batch.Project)
 					}
 					if orgID > 0 {
-						utils.PublishScanSummary(orgID, batch.Project, totalVulns, len(batchResults))
+						utils.PublishScanSummary(orgID, batch.Project, totalVulns, batch.CodeFindingsCount)
 					}
 				}
 			}
@@ -392,7 +394,7 @@ func processEvent(evt SBOMEvent, db *sql.DB) (*utils.VulnProcessedPayload, error
 				fix_available, fixed_version, updated_at, is_active
 			)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(), TRUE)
-			ON CONFLICT (sbom_id, component_name, component_version)
+			ON CONFLICT (sbom_id, component_name, component_version, vuln_id)
 			DO UPDATE SET
 				project_id     = EXCLUDED.project_id,
 				project_name   = EXCLUDED.project_name,
@@ -454,6 +456,16 @@ func processEvent(evt SBOMEvent, db *sql.DB) (*utils.VulnProcessedPayload, error
 	if len(vulnComponents) == 0 {
 		// Không còn vuln active cho SBOM này
 		return nil, nil
+	}
+
+	orgID := evt.OrganizationID
+	if orgID == 0 {
+		orgID = lookupOrgIDByProject(ctx, db, evt.Project)
+	}
+	if orgID > 0 {
+		if err := maybePublishCriticalAlert(ctx, db, orgID, evt.Project, vulnComponents); err != nil {
+			log.Printf("[VULN][ALERT] publish critical alert failed: %v", err)
+		}
 	}
 
 	payload := &utils.VulnProcessedPayload{
@@ -574,4 +586,41 @@ func loadSBOMBytes(ctx context.Context, dbConn *sql.DB, evt SBOMEvent) ([]byte, 
 	}
 
 	return nil, fmt.Errorf("no SBOM payload available for project=%s sbom=%s", evt.Project, evt.SBOMID)
+}
+
+func maybePublishCriticalAlert(ctx context.Context, dbConn *sql.DB, orgID int64, project string, vulns []map[string]interface{}) error {
+	critical := make([]map[string]string, 0, len(vulns))
+	for _, v := range vulns {
+		sev, _ := v["severity"].(string)
+		if !strings.EqualFold(sev, "critical") {
+			continue
+		}
+		comp, _ := v["component"].(string)
+		ver, _ := v["version"].(string)
+		id, _ := v["vuln_id"].(string)
+		critical = append(critical, map[string]string{
+			"component": comp,
+			"version":   ver,
+			"vuln_id":   id,
+		})
+	}
+	if len(critical) == 0 {
+		return nil
+	}
+
+	settings, err := orgsettings.Get(ctx, dbConn, orgID)
+	if err != nil {
+		return err
+	}
+	if settings != nil && !settings.VulnerabilityAlerts {
+		return nil
+	}
+
+	var emails []string
+	if settings != nil && settings.EmailNotifications && settings.AdminEmail != "" {
+		emails = append(emails, settings.AdminEmail)
+	}
+
+	utils.PublishCriticalVulnAlert(orgID, project, critical, emails)
+	return nil
 }

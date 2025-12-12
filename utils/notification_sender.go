@@ -145,3 +145,48 @@ func PublishSBOMSummary(orgID int64, project string, components int, vulns int) 
 		log.Printf("[NOTIFY] publish sbom summary failed: %v", err)
 	}
 }
+
+// PublishCriticalVulnAlert notifies developers and admins about new critical vulns.
+func PublishCriticalVulnAlert(orgID int64, project string, samples []map[string]string, targetEmails []string) {
+	if orgID == 0 || len(samples) == 0 {
+		return
+	}
+
+	payload := map[string]interface{}{
+		"project":        project,
+		"critical_count": len(samples),
+		"samples":        samples,
+		"action_url":     "/developer/vulnerabilities",
+		"target_role":    "developer",
+	}
+
+	event := map[string]interface{}{
+		"type":            "vulnerability.critical",
+		"organization_id": orgID,
+		"severity":        "critical",
+		"payload":         payload,
+		"occurred_at":     time.Now().UTC(),
+	}
+	if len(targetEmails) > 0 {
+		event["emails"] = targetEmails
+	}
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		log.Printf("[NOTIFY] marshal critical vuln alert failed: %v", err)
+		return
+	}
+
+	writer := getWriter()
+	defer writer.Close()
+
+	msg := kafka.Message{
+		Key:   []byte(fmt.Sprintf("org-%d-critical", orgID)),
+		Value: data,
+		Time:  time.Now().UTC(),
+	}
+
+	if err := writer.WriteMessages(context.Background(), msg); err != nil {
+		log.Printf("[NOTIFY] publish critical alert failed: %v", err)
+	}
+}
