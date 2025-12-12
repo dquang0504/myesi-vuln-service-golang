@@ -69,7 +69,13 @@ func createAssignment(c *fiber.Ctx) error {
 	var tmp int64
 	if err := db.Conn.QueryRowContext(
 		ctx,
-		"SELECT id FROM vulnerabilities WHERE id = $1",
+		`
+        SELECT v.id
+        FROM vulnerabilities v
+        JOIN sboms s   ON s.id = v.sbom_id
+        JOIN projects p ON p.id = s.project_id
+        WHERE v.id = $1 AND p.organization_id = $2
+        `,
 		req.VulnerabilityID,
 	).Scan(&tmp); err != nil {
 
@@ -166,6 +172,11 @@ func createAssignment(c *fiber.Ctx) error {
 }
 
 func bulkAssign(c *fiber.Ctx) error {
+	orgID, err := requireOrgID(c)
+	if err != nil {
+		return err
+	}
+
 	var req schemas.BulkAssignReq
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
@@ -231,6 +242,33 @@ func bulkAssign(c *fiber.Ctx) error {
 		if vid == 0 {
 			continue
 		}
+
+		// Kiểm tra vuln thuộc org
+		var exists bool
+		if err := tx.QueryRowContext(
+			ctx,
+			`
+            SELECT EXISTS (
+                SELECT 1
+                FROM vulnerabilities v
+                JOIN sboms s   ON s.id = v.sbom_id
+                JOIN projects p ON p.id = s.project_id
+                WHERE v.id = $1 AND p.organization_id = $2
+            )
+            `,
+			vid, orgID,
+		).Scan(&exists); err != nil || !exists {
+			reason := "vulnerability not found or not in tenant"
+			if err != nil {
+				reason = err.Error()
+			}
+			skipped = append(skipped, map[string]interface{}{
+				"id":     vid,
+				"reason": reason,
+			})
+			continue
+		}
+
 		if _, err := tx.ExecContext(
 			ctx, stmt,
 			vid, req.AssigneeID, assignedBy,
@@ -383,6 +421,11 @@ type AnalystTriageResponse struct {
 func listAssignments(c *fiber.Ctx) error {
 	ctx := context.Background()
 
+	orgID, err := requireOrgID(c)
+	if err != nil {
+		return err
+	}
+
 	projectName := c.Query("project_name", "")
 	assigneeStr := c.Query("assignee_id", "")
 	status := c.Query("status", "")
@@ -395,18 +438,16 @@ func listAssignments(c *fiber.Ctx) error {
 	}
 	offset, _ := strconv.Atoi(offsetStr)
 
-	where := []string{"1=1"}
-	args := []interface{}{}
-	idx := 1
+	where := []string{"p.organization_id = $1"}
+	args := []interface{}{orgID}
+	idx := 2
 
-	// filter theo project_name (trên bảng vulnerabilities)
 	if projectName != "" && projectName != "all" {
 		where = append(where, "v.project_name = $"+strconv.Itoa(idx))
 		args = append(args, projectName)
 		idx++
 	}
 
-	// filter theo assignee_id (chỉ những cái ĐÃ assign)
 	if assigneeStr != "" {
 		if aid, err := strconv.ParseInt(assigneeStr, 10, 64); err == nil {
 			where = append(where, "va.assignee_id = $"+strconv.Itoa(idx))
@@ -415,7 +456,6 @@ func listAssignments(c *fiber.Ctx) error {
 		}
 	}
 
-	// filter status: dùng COALESCE để mặc định "open" nếu chưa có assignment
 	if status != "" {
 		where = append(where, "COALESCE(va.status, 'open') = $"+strconv.Itoa(idx))
 		args = append(args, status)
@@ -424,45 +464,44 @@ func listAssignments(c *fiber.Ctx) error {
 
 	whereSQL := strings.Join(where, " AND ")
 
-	// ---- TOTAL: đếm theo vulnerabilities, không phải assignments ----
 	countQuery := `
-        SELECT COUNT(DISTINCT v.id)
-        FROM vulnerabilities v
-        LEFT JOIN vulnerability_assignments va ON va.vulnerability_id = v.id
-        WHERE ` + whereSQL
+    SELECT COUNT(DISTINCT v.id)
+    FROM vulnerabilities v
+    JOIN sboms s  ON s.id = v.sbom_id
+    JOIN projects p ON p.id = s.project_id
+    LEFT JOIN vulnerability_assignments va ON va.vulnerability_id = v.id
+    WHERE ` + whereSQL
 
 	var total int64
 	if err := db.Conn.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	// ---- LIST: lấy vuln + (nếu có) assignment ----
 	listQuery := `
     SELECT
-        COALESCE(va.id, 0) AS assignment_id,
-        v.id                AS vulnerability_id,
-        COALESCE(va.assignee_id, 0),
-        COALESCE(va.assigned_by, 0),
-        COALESCE(va.status, 'open')          AS status,
-        COALESCE(va.priority, 'medium')      AS priority,
-        COALESCE(va.note, '')                AS note,
+        COALESCE(va.id, 0)                    AS assignment_id,
+        v.id                                   AS vulnerability_id,
+        COALESCE(va.assignee_id, 0)           AS assignee_id,
+        COALESCE(va.assigned_by, 0)           AS assigned_by,
+        COALESCE(va.status, 'open')           AS status,
+        COALESCE(va.priority, 'medium')       AS priority,
+        COALESCE(va.note, '')                 AS note,
         va.due_date,
         COALESCE(va.created_at, v.created_at) AS created_at,
         COALESCE(va.updated_at, v.updated_at) AS updated_at,
-
-        COALESCE(v.project_name, ''),
-        COALESCE(v.component_name, ''),
-        COALESCE(v.component_version, ''),
-        COALESCE(v.severity, ''),
-
-        COALESCE(u1.email, '') AS assignee_email,
-        COALESCE(u2.email, '') AS assigned_by_email,
-        COALESCE(s.source, '') AS source
+        COALESCE(v.project_name, '')          AS project_name,
+        COALESCE(v.component_name, '')        AS component_name,
+        COALESCE(v.component_version, '')     AS component_version,
+        COALESCE(v.severity, '')              AS severity,
+        COALESCE(u1.email, '')                AS assignee_email,
+        COALESCE(u2.email, '')                AS assigned_by_email,
+        COALESCE(s.source, '')                AS source
     FROM vulnerabilities v
+    JOIN sboms s    ON s.id = v.sbom_id
+    JOIN projects p ON p.id = s.project_id
     LEFT JOIN vulnerability_assignments va ON va.vulnerability_id = v.id
     LEFT JOIN users u1 ON u1.id = va.assignee_id
     LEFT JOIN users u2 ON u2.id = va.assigned_by
-    LEFT JOIN sboms s ON s.id = v.sbom_id
     WHERE ` + whereSQL + `
     ORDER BY COALESCE(va.created_at, v.created_at) DESC
     LIMIT $` + strconv.Itoa(idx) + ` OFFSET $` + strconv.Itoa(idx+1)
@@ -510,6 +549,12 @@ func listAssignments(c *fiber.Ctx) error {
 
 func analystTriage(c *fiber.Ctx) error {
 	ctx := context.Background()
+
+	orgID, err := requireOrgID(c)
+	if err != nil {
+		return err
+	}
+
 	projectName := c.Query("project_name", "")
 	assigneeStr := c.Query("assignee_id", "")
 	status := c.Query("status", "")
@@ -543,9 +588,9 @@ func analystTriage(c *fiber.Ctx) error {
 	}
 
 	// ========= 1) VULNERABILITIES PART =========
-	where := []string{"1 = 1"}
-	args := []interface{}{}
-	idx := 1
+	where := []string{"p.organization_id = $1"}
+	args := []interface{}{orgID}
+	idx := 2
 
 	if projectName != "" && projectName != "all" {
 		where = append(where, "v.project_name = $"+strconv.Itoa(idx))
@@ -599,12 +644,14 @@ func analystTriage(c *fiber.Ctx) error {
 	whereSQL := strings.Join(where, " AND ")
 
 	countQuery := `
-        SELECT COUNT(DISTINCT v.id)
-        FROM vulnerabilities v
-        LEFT JOIN vulnerability_assignments va ON va.vulnerability_id = v.id
-        LEFT JOIN users u1 ON u1.id = va.assignee_id
-        LEFT JOIN users u2 ON u2.id = va.assigned_by
-        WHERE ` + whereSQL
+    SELECT COUNT(DISTINCT v.id)
+    FROM vulnerabilities v
+    JOIN sboms s   ON s.id = v.sbom_id
+    JOIN projects p ON p.id = s.project_id
+    LEFT JOIN vulnerability_assignments va ON va.vulnerability_id = v.id
+    LEFT JOIN users u1 ON u1.id = va.assignee_id
+    LEFT JOIN users u2 ON u2.id = va.assigned_by
+    WHERE ` + whereSQL
 
 	var vulnTotal int64
 	if err := db.Conn.QueryRowContext(ctx, countQuery, args...).Scan(&vulnTotal); err != nil {
@@ -612,34 +659,35 @@ func analystTriage(c *fiber.Ctx) error {
 	}
 
 	listQuery := `
-        SELECT
-            COALESCE(va.id, 0) AS assignment_id,
-            v.id                AS vulnerability_id,
-            COALESCE(va.assignee_id, 0),
-            COALESCE(va.assigned_by, 0),
-            COALESCE(va.status, 'open')          AS status,
-            COALESCE(va.priority, 'medium')      AS priority,
-            COALESCE(va.note, '')                AS note,
-            va.due_date,
-            COALESCE(va.created_at, v.created_at) AS created_at,
-            COALESCE(va.updated_at, v.updated_at) AS updated_at,
+    SELECT
+        COALESCE(va.id, 0)                    AS assignment_id,
+        v.id                                   AS vulnerability_id,
+        COALESCE(va.assignee_id, 0)           AS assignee_id,
+        COALESCE(va.assigned_by, 0)           AS assigned_by,
+        COALESCE(va.status, 'open')           AS status,
+        COALESCE(va.priority, 'medium')       AS priority,
+        COALESCE(va.note, '')                 AS note,
+        va.due_date,
+        COALESCE(va.created_at, v.created_at) AS created_at,
+        COALESCE(va.updated_at, v.updated_at) AS updated_at,
 
-            COALESCE(v.project_name, ''),
-            COALESCE(v.component_name, ''),
-            COALESCE(v.component_version, ''),
-            COALESCE(v.severity, ''),
+        COALESCE(v.project_name, '')          AS project_name,
+        COALESCE(v.component_name, '')        AS component_name,
+        COALESCE(v.component_version, '')     AS component_version,
+        COALESCE(v.severity, '')              AS severity,
 
-            COALESCE(u1.email, '') AS assignee_email,
-            COALESCE(u2.email, '') AS assigned_by_email,
-            COALESCE(s.source, '') AS source
-        FROM vulnerabilities v
-        LEFT JOIN vulnerability_assignments va ON va.vulnerability_id = v.id
-        LEFT JOIN users u1 ON u1.id = va.assignee_id
-        LEFT JOIN users u2 ON u2.id = va.assigned_by
-        LEFT JOIN sboms s ON s.id = v.sbom_id
-        WHERE ` + whereSQL + `
-        ORDER BY COALESCE(va.created_at, v.created_at) DESC
-        LIMIT $` + strconv.Itoa(idx) + ` OFFSET $` + strconv.Itoa(idx+1)
+        COALESCE(u1.email, '')                AS assignee_email,
+        COALESCE(u2.email, '')                AS assigned_by_email,
+        COALESCE(s.source, '')                AS source
+    FROM vulnerabilities v
+    JOIN sboms s    ON s.id = v.sbom_id
+    JOIN projects p ON p.id = s.project_id
+    LEFT JOIN vulnerability_assignments va ON va.vulnerability_id = v.id
+    LEFT JOIN users u1 ON u1.id = va.assignee_id
+    LEFT JOIN users u2 ON u2.id = va.assigned_by
+    WHERE ` + whereSQL + `
+    ORDER BY COALESCE(va.created_at, v.created_at) DESC
+    LIMIT $` + strconv.Itoa(idx) + ` OFFSET $` + strconv.Itoa(idx+1)
 
 	vulnArgs := append(append([]interface{}{}, args...), vulnLimit, vulnOffset)
 
@@ -677,9 +725,9 @@ func analystTriage(c *fiber.Ctx) error {
 	}
 
 	// ========= 2) CODE FINDINGS PART =========
-	cfWhere := []string{"1=1"}
-	cfArgs := []interface{}{}
-	cfIdx := 1
+	cfWhere := []string{"p.organization_id = $1"}
+	cfArgs := []interface{}{orgID}
+	cfIdx := 2
 
 	if projectName != "" && projectName != "all" {
 		cfWhere = append(cfWhere, "cf.project_name = $"+strconv.Itoa(cfIdx))
@@ -731,12 +779,13 @@ func analystTriage(c *fiber.Ctx) error {
 	cfWhereSQL := strings.Join(cfWhere, " AND ")
 
 	cfCountQuery := `
-        SELECT COUNT(DISTINCT cf.id)
-        FROM code_findings cf
-        LEFT JOIN code_finding_assignments cfa ON cfa.code_finding_id = cf.id
-        LEFT JOIN users u1 ON u1.id = cfa.assignee_id
-        LEFT JOIN users u2 ON u2.id = cfa.assigned_by
-        WHERE ` + cfWhereSQL
+    SELECT COUNT(DISTINCT cf.id)
+    FROM code_findings cf
+    JOIN projects p ON p.id = cf.project_id
+    LEFT JOIN code_finding_assignments cfa ON cfa.code_finding_id = cf.id
+    LEFT JOIN users u1 ON u1.id = cfa.assignee_id
+    LEFT JOIN users u2 ON u2.id = cfa.assigned_by
+    WHERE ` + cfWhereSQL
 
 	var cfTotal int64
 	if err := db.Conn.QueryRowContext(ctx, cfCountQuery, cfArgs...).Scan(&cfTotal); err != nil {
@@ -770,6 +819,7 @@ func analystTriage(c *fiber.Ctx) error {
             COALESCE(u2.email, ''),
             'Code (Semgrep)' AS source
         FROM code_findings cf
+		JOIN projects p ON p.id = cf.project_id
         LEFT JOIN code_finding_assignments cfa ON cfa.code_finding_id = cf.id
         LEFT JOIN users u1 ON u1.id = cfa.assignee_id
         LEFT JOIN users u2 ON u2.id = cfa.assigned_by
@@ -866,6 +916,11 @@ func loadProjectForCodeFinding(ctx context.Context, cfID int64) string {
 }
 
 func createCodeFindingAssignment(c *fiber.Ctx) error {
+	orgID, err := requireOrgID(c)
+	if err != nil {
+		return err
+	}
+
 	var req schemas.CreateCodeFindingAssignmentReq
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
@@ -899,7 +954,12 @@ func createCodeFindingAssignment(c *fiber.Ctx) error {
 	var projectName string
 	if err := db.Conn.QueryRowContext(
 		ctx,
-		"SELECT id, project_name FROM code_findings WHERE id = $1",
+		`
+        SELECT cf.id, cf.project_name
+        FROM code_findings cf
+        JOIN projects p ON p.id = cf.project_id
+        WHERE cf.id = $1 AND p.organization_id = $2
+        `, orgID,
 		req.CodeFindingID,
 	).Scan(&tmp, &projectName); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -984,6 +1044,11 @@ func createCodeFindingAssignment(c *fiber.Ctx) error {
 }
 
 func bulkAssignCodeFinding(c *fiber.Ctx) error {
+	orgID, err := requireOrgID(c)
+	if err != nil {
+		return err
+	}
+
 	var req schemas.BulkCodeFindingAssignReq
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
@@ -1047,6 +1112,32 @@ func bulkAssignCodeFinding(c *fiber.Ctx) error {
 		if id == 0 {
 			continue
 		}
+
+		// Check org
+		var belongs bool
+		if err := tx.QueryRowContext(
+			ctx,
+			`
+            SELECT EXISTS (
+                SELECT 1
+                FROM code_findings cf
+                JOIN projects p ON p.id = cf.project_id
+                WHERE cf.id = $1 AND p.organization_id = $2
+            )
+            `,
+			id, orgID,
+		).Scan(&belongs); err != nil || !belongs {
+			reason := "code finding not found or not in tenant"
+			if err != nil {
+				reason = err.Error()
+			}
+			skipped = append(skipped, map[string]interface{}{
+				"id":     id,
+				"reason": reason,
+			})
+			continue
+		}
+
 		if _, err := tx.ExecContext(
 			ctx, stmt,
 			id, req.AssigneeID, assignedBy,
