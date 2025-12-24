@@ -57,6 +57,51 @@ type grypeCVSS struct {
 	} `json:"metrics"`
 }
 
+func cvssVersionRank(vector string) int {
+	vec := strings.ToUpper(vector)
+	switch {
+	case strings.Contains(vec, "CVSS:3"):
+		return 3
+	case strings.Contains(vec, "CVSS:2"):
+		return 2
+	case vec != "":
+		return 1
+	default:
+		return 0
+	}
+}
+
+func selectBestCVSS(entries []grypeCVSS) (vector string, hasVector bool, score float64) {
+	bestRank := -1
+	bestScore := 0.0
+	var bestVector string
+	var vectorPresent bool
+
+	for _, entry := range entries {
+		vec := strings.TrimSpace(entry.Vector)
+		val := entry.Metrics.BaseScore
+		rank := cvssVersionRank(vec)
+
+		if val <= 0 && vec == "" {
+			continue
+		}
+
+		if rank > bestRank || (rank == bestRank && val > bestScore) {
+			bestRank = rank
+			bestScore = val
+			if vec != "" {
+				bestVector = vec
+				vectorPresent = true
+			} else {
+				bestVector = ""
+				vectorPresent = false
+			}
+		}
+	}
+
+	return bestVector, vectorPresent, bestScore
+}
+
 // BuildCycloneDXFromComponents serializes the provided component list into a minimal CycloneDX SBOM.
 func BuildCycloneDXFromComponents(components []map[string]string) ([]byte, error) {
 	type cdxComponent struct {
@@ -164,11 +209,12 @@ func ScanSBOMWithGrype(ctx context.Context, sbomBytes []byte) ([]GrypeFinding, e
 
 		var cvssVector *string
 		cvssScore := 0.0
-		if len(match.Vulnerability.CVSS) > 0 {
-			if vector := strings.TrimSpace(match.Vulnerability.CVSS[0].Vector); vector != "" {
-				cvssVector = &vector
+		if vec, ok, score := selectBestCVSS(match.Vulnerability.CVSS); ok || score > 0 {
+			if ok {
+				vectorCopy := vec
+				cvssVector = &vectorCopy
 			}
-			if score := match.Vulnerability.CVSS[0].Metrics.BaseScore; score > 0 {
+			if score > 0 {
 				cvssScore = score
 			}
 		}

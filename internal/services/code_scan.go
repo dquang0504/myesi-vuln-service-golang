@@ -11,6 +11,8 @@ import (
 	"log"
 	"myesi-vuln-service-golang/internal/config"
 	"myesi-vuln-service-golang/internal/db"
+	"myesi-vuln-service-golang/internal/events"
+	kafkautil "myesi-vuln-service-golang/internal/kafka"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -254,10 +256,11 @@ func RunCodeScan(projectName, repoURL, tool, githubToken string, userID int) err
 	// 1) Làm thư mục cache ổn định
 	// 2) Đẩy vào event Kafka mà không cần query lại
 	var projectID int
+	var organizationID int64
 	if err := db.Conn.QueryRowContext(ctx,
-		"SELECT id FROM projects WHERE name = $1",
+		"SELECT id, organization_id FROM projects WHERE name = $1",
 		projectName,
-	).Scan(&projectID); err != nil {
+	).Scan(&projectID, &organizationID); err != nil {
 		log.Printf("[SCAN][ERR] project lookup failed for %s: %v", projectName, err)
 		return err
 	}
@@ -275,7 +278,7 @@ func RunCodeScan(projectName, repoURL, tool, githubToken string, userID int) err
 	SaveCodeFindings(projectID, projectName, findings)
 
 	// Publish Kafka event (with manifests)
-	err = PublishCodeScanEvent(projectID, projectName, findings, manifests)
+	err = PublishCodeScanEvent(projectID, projectName, organizationID, findings, manifests)
 	if err != nil {
 		log.Printf("[SCAN][ERR] publish error: %v", err)
 		return err
@@ -435,24 +438,25 @@ func ExecuteScanner(tool, target, githubToken, projectName string, projectID int
 	return findings, manifests, nil
 }
 
-func PublishCodeScanEvent(projectID int, projectName string, findings []map[string]interface{}, manifests []Manifest) error {
-	cfg := config.LoadConfig()
-	w := kafka.Writer{
-		Addr:  kafka.TCP(strings.Split(cfg.KafkaBroker, ",")...),
-		Topic: "code-scan-results",
+func PublishCodeScanEvent(projectID int, projectName string, organizationID int64, findings []map[string]interface{}, manifests []Manifest) error {
+	writer, err := kafkautil.GetWriter(kafkautil.TopicCodeScanResults)
+	if err != nil {
+		return fmt.Errorf("kafka writer unavailable: %w", err)
 	}
-	defer w.Close()
 
-	event := map[string]interface{}{
-		"event_type": "CODE_SCAN_DONE",
-		"project":    projectName,
-		"project_id": projectID,
-		"findings":   findings,
-		"timestamp":  time.Now(),
+	eventData := struct {
+		ProjectID int                      `json:"project_id"`
+		Project   string                   `json:"project_name"`
+		Findings  []map[string]interface{} `json:"findings"`
+		Manifests []map[string]interface{} `json:"manifests,omitempty"`
+	}{
+		ProjectID: projectID,
+		Project:   projectName,
+		Findings:  findings,
 	}
 
 	if len(manifests) > 0 {
-		eventManifests := []map[string]interface{}{}
+		eventManifests := make([]map[string]interface{}, 0, len(manifests))
 		for _, m := range manifests {
 			eventManifests = append(eventManifests, map[string]interface{}{
 				"name":    m.Name,
@@ -461,22 +465,23 @@ func PublishCodeScanEvent(projectID int, projectName string, findings []map[stri
 				"size":    m.Size,
 			})
 		}
-		event["manifests"] = eventManifests
+		eventData.Manifests = eventManifests
 	}
 
-	data, _ := json.Marshal(event)
+	payload := events.NewEnvelope("code_scan.done", organizationID, projectName, eventData)
+	data, _ := json.Marshal(payload)
 
 	msg := kafka.Message{
 		Key:   []byte(projectName),
 		Value: data,
 	}
 
-	if err := w.WriteMessages(context.Background(), msg); err != nil {
+	if err := writer.WriteMessages(context.Background(), msg); err != nil {
 		log.Printf("[KAFKA][ERR] %v", err)
 		return err
 	}
 
-	log.Printf("[KAFKA] Sent CODE_SCAN_DONE for %s (manifests=%d)", projectName, len(manifests))
+	log.Printf("[KAFKA] Sent code_scan.done for %s (manifests=%d)", projectName, len(manifests))
 	return nil
 }
 

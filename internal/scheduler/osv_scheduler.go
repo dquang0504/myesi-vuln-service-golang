@@ -7,6 +7,7 @@ import (
 	"log"
 	"myesi-vuln-service-golang/internal/config"
 	"myesi-vuln-service-golang/internal/db"
+	kafkautil "myesi-vuln-service-golang/internal/kafka"
 	"myesi-vuln-service-golang/utils"
 	"time"
 
@@ -83,12 +84,11 @@ func runOnce(ctx context.Context, conn *sql.DB, limit int) (int, error) {
 	}
 	defer rows.Close()
 
-	writer := kafka.Writer{
-		Addr:     kafka.TCP(config.LoadConfig().KafkaBroker),
-		Topic:    config.LoadConfig().KafkaTopic,
-		Balancer: &kafka.LeastBytes{},
+	cfg := config.LoadConfig()
+	writer, err := kafkautil.GetWriter(cfg.KafkaTopic)
+	if err != nil {
+		return 0, err
 	}
-	defer writer.Close()
 
 	count := 0
 	for rows.Next() {

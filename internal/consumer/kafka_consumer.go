@@ -6,9 +6,12 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"myesi-vuln-service-golang/internal/config"
+	"myesi-vuln-service-golang/internal/events"
+	kafkautil "myesi-vuln-service-golang/internal/kafka"
 	"myesi-vuln-service-golang/internal/redis"
 	"myesi-vuln-service-golang/internal/services"
 	orgsettings "myesi-vuln-service-golang/internal/services/orgsettings"
@@ -55,12 +58,29 @@ type SBOMBatchEvent struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
+type rawEnvelope struct {
+	Type           string          `json:"type"`
+	Version        int             `json:"version,omitempty"`
+	ID             string          `json:"id,omitempty"`
+	OccurredAt     time.Time       `json:"occurred_at,omitempty"`
+	OrganizationID int64           `json:"organization_id,omitempty"`
+	ProjectName    string          `json:"project_name,omitempty"`
+	Data           json.RawMessage `json:"data"`
+}
+
 // ===== Hằng số =====
 const (
 	maxRetry     = 3
 	retryDelay   = 5 * time.Second
 	cacheTTL     = 24 * time.Hour
 	redisHashKey = "sbom:%s:hash"
+)
+
+type failureCategory string
+
+const (
+	failureTransient failureCategory = "transient"
+	failurePermanent failureCategory = "permanent"
 )
 
 // ===== Metric =====
@@ -118,8 +138,17 @@ func StartConsumer(db *sql.DB) error {
 		var single SBOMEvent
 		var batch SBOMBatchEvent
 
-		// CASE 1 — batch message từ sbom-service
-		if err := json.Unmarshal(m.Value, &batch); err == nil && batch.Type == "sbom.batch_created" {
+		envInfo, isEnvelope, err := decodeEnvelope(m.Value, &batch)
+		if err == nil && (batch.Type == "sbom.batch_created" || (isEnvelope && envInfo.Type == "sbom.batch_created")) {
+			if batch.Type == "" {
+				batch.Type = envInfo.Type
+			}
+			if batch.Project == "" && envInfo.ProjectName != "" {
+				batch.Project = envInfo.ProjectName
+			}
+			if batch.OrganizationID == 0 && envInfo.OrganizationID != 0 {
+				batch.OrganizationID = envInfo.OrganizationID
+			}
 			log.Printf("[VulnService] Received batch with %d SBOM(s) for project %s", len(batch.SBOMRecords), batch.Project)
 
 			// tạm lưu kết quả toàn batch
@@ -159,16 +188,18 @@ func StartConsumer(db *sql.DB) error {
 					payload := result
 					if payload == nil {
 						payload = &utils.VulnProcessedPayload{
-							Type:        "vuln.processed",
-							SBOMID:      id,
-							ProjectName: batch.Project,
-							Components:  []map[string]interface{}{}, // sạch vuln
-							Timestamp:   time.Now().UTC(),
-							Hash:        "",
+							SBOMID:         id,
+							ProjectName:    batch.Project,
+							OrganizationID: batch.OrganizationID,
+							Components:     []map[string]interface{}{}, // sạch vuln
+							Timestamp:      time.Now().UTC(),
+							Hash:           "",
+							Status:         "success",
 						}
 					} else {
 						changed = true
 					}
+					payload.Status = "success"
 
 					mu.Lock()
 					batchResults = append(batchResults, *payload)
@@ -180,10 +211,10 @@ func StartConsumer(db *sql.DB) error {
 
 			if len(batchResults) > 0 {
 				err = utils.ProduceVulnProcessedBatch(utils.VulnProcessedBatchPayload{
-					Type:        "vuln.processed.batch",
-					ProjectName: batch.Project,
-					Records:     batchResults,
-					Timestamp:   time.Now().UTC(),
+					ProjectName:    batch.Project,
+					OrganizationID: batch.OrganizationID,
+					Records:        batchResults,
+					Timestamp:      time.Now().UTC(),
 				})
 				if err != nil {
 					log.Printf("[VulnService] Kafka batch publish failed for project %s: %v", batch.Project, err)
@@ -212,7 +243,14 @@ func StartConsumer(db *sql.DB) error {
 		}
 
 		// CASE 2 — single SBOM event
-		if err := json.Unmarshal(m.Value, &single); err == nil && single.SBOMID != "" {
+		envInfoSingle, singleEnvelope, err := decodeEnvelope(m.Value, &single)
+		if err == nil && (single.SBOMID != "" || (singleEnvelope && envInfoSingle.Type == "sbom.created")) {
+			if single.OrganizationID == 0 && envInfoSingle.OrganizationID != 0 {
+				single.OrganizationID = envInfoSingle.OrganizationID
+			}
+			if single.Project == "" && envInfoSingle.ProjectName != "" {
+				single.Project = envInfoSingle.ProjectName
+			}
 			processWithRetry(single, db)
 			_ = r.CommitMessages(context.Background(), m)
 			continue
@@ -228,12 +266,13 @@ func StartConsumer(db *sql.DB) error {
 
 			// Tạo payload rỗng
 			payload := utils.VulnProcessedPayload{
-				Type:        "vuln.processed",
 				SBOMID:      uuid.NewString(),
 				ProjectName: project,
 				Components:  []map[string]interface{}{},
 				Timestamp:   timestamp,
 				Hash:        "",
+				Status:      "failed",
+				Error:       "sbom.limit_reached",
 			}
 
 			// ALWAYS SEND
@@ -253,38 +292,35 @@ func StartConsumer(db *sql.DB) error {
 }
 
 // ===== Retry wrapper =====
+// processWithRetry drives the SBOM pipeline with bounded retries (maxRetry with
+// 5s backoff). Each attempt either succeeds and immediately emits
+// vuln.processed(status=success) or fails and is retried based on error
+// classification. After the final attempt we always emit a terminal event and a
+// DLQ entry so downstream consumers never wait indefinitely.
 func processWithRetry(evt SBOMEvent, db *sql.DB) *utils.VulnProcessedPayload {
 	ctx := context.Background()
 	start := time.Now()
 	var result *utils.VulnProcessedPayload
 	success := false
+	var lastErr error
+	attempts := 0
+	failureClass := failureTransient
 
 	for attempt := 1; attempt <= maxRetry; attempt++ {
+		attempts = attempt
 		r, err := processEventWithQuota(evt, db)
 		if err != nil {
 			log.Printf("[VulnService] attempt %d failed for SBOMID %s: %v", attempt, evt.SBOMID, err)
+			lastErr = err
+			failureClass = classifyFailure(err)
+			if failureClass == failurePermanent {
+				break
+			}
 			time.Sleep(retryDelay)
 		} else {
 			result = r
 			success = true
-			// ---- ALWAYS SEND MESSAGE TO RISK SERVICE ----
-			payload := r
-			if payload == nil {
-				payload = &utils.VulnProcessedPayload{
-					Type:        "vuln.processed",
-					SBOMID:      evt.SBOMID,
-					ProjectName: evt.Project,
-					Components:  []map[string]interface{}{},
-					Timestamp:   time.Now().UTC(),
-					Hash:        "",
-				}
-			}
-
-			if err := utils.ProduceVulnProcessed(*payload); err != nil {
-				log.Printf("[KAFKA][ERR] publish failed: %v", err)
-			} else {
-				log.Printf("[KAFKA] Published vuln.processed for SBOM %s", evt.SBOMID)
-			}
+			emitSuccessEvent(evt, r)
 			break
 		}
 	}
@@ -298,6 +334,10 @@ func processWithRetry(evt SBOMEvent, db *sql.DB) *utils.VulnProcessedPayload {
 	)
 
 	log.Printf("[VulnService] SBOMID %s processed in %s (success=%v)", evt.SBOMID, time.Since(start), success)
+	if !success && lastErr != nil {
+		emitFailureEvent(evt, lastErr)
+		publishDLQEvent(evt, lastErr, attempts, failureClass)
+	}
 	return result
 }
 
@@ -469,12 +509,13 @@ func processEvent(evt SBOMEvent, db *sql.DB) (*utils.VulnProcessedPayload, error
 	}
 
 	payload := &utils.VulnProcessedPayload{
-		Type:        "vuln.processed",
-		SBOMID:      evt.SBOMID,
-		ProjectName: evt.Project,
-		Components:  vulnComponents,
-		Timestamp:   time.Now().UTC(),
-		Hash:        hashStr,
+		SBOMID:         evt.SBOMID,
+		ProjectName:    evt.Project,
+		OrganizationID: orgID,
+		Components:     vulnComponents,
+		Timestamp:      time.Now().UTC(),
+		Hash:           hashStr,
+		Status:         "success",
 	}
 
 	// Publish SBOM summary with real vuln count (after processing)
@@ -519,6 +560,9 @@ func processEventWithQuota(evt SBOMEvent, db *sql.DB) (*utils.VulnProcessedPaylo
 		return nil, fmt.Errorf("cannot find orgID for project %s: %w", evt.Project, err)
 	}
 	evt.ProjectID = projectID
+	if evt.OrganizationID == 0 && orgID > 0 {
+		evt.OrganizationID = int64(orgID)
+	}
 
 	// ---- Project scan quota check ONLY ----
 	var allowed bool
@@ -532,12 +576,14 @@ func processEventWithQuota(evt SBOMEvent, db *sql.DB) (*utils.VulnProcessedPaylo
 	if err := row.Scan(&allowed, &msg, &nextReset); err != nil || !allowed {
 		log.Printf("[LIMIT] Project scan limit reached for %s: %v", evt.Project, msg)
 		payload := utils.VulnProcessedPayload{
-			Type:        "vuln.processed",
-			ProjectName: evt.Project,
-			SBOMID:      uuid.NewString(),
-			Components:  []map[string]interface{}{},
-			Timestamp:   time.Now().UTC(),
-			Hash:        "",
+			ProjectName:    evt.Project,
+			SBOMID:         uuid.NewString(),
+			OrganizationID: int64(orgID),
+			Components:     []map[string]interface{}{},
+			Timestamp:      time.Now().UTC(),
+			Hash:           "",
+			Status:         "failed",
+			Error:          msg,
 		}
 		_ = utils.ProduceVulnProcessed(payload)
 		return nil, nil
@@ -586,6 +632,124 @@ func loadSBOMBytes(ctx context.Context, dbConn *sql.DB, evt SBOMEvent) ([]byte, 
 	}
 
 	return nil, fmt.Errorf("no SBOM payload available for project=%s sbom=%s", evt.Project, evt.SBOMID)
+}
+
+func decodeEnvelope(raw []byte, target interface{}) (rawEnvelope, bool, error) {
+	var env rawEnvelope
+	if err := json.Unmarshal(raw, &env); err == nil && env.Type != "" && len(env.Data) > 0 {
+		if err := json.Unmarshal(env.Data, target); err != nil {
+			return env, true, err
+		}
+		return env, true, nil
+	}
+
+	if err := json.Unmarshal(raw, target); err != nil {
+		return rawEnvelope{}, false, err
+	}
+	return rawEnvelope{}, false, nil
+}
+
+func emitSuccessEvent(evt SBOMEvent, payload *utils.VulnProcessedPayload) {
+	if payload == nil {
+		payload = &utils.VulnProcessedPayload{
+			SBOMID:         evt.SBOMID,
+			ProjectName:    evt.Project,
+			OrganizationID: evt.OrganizationID,
+			Components:     []map[string]interface{}{},
+			Timestamp:      time.Now().UTC(),
+			Status:         "success",
+		}
+	}
+	if payload.OrganizationID == 0 {
+		payload.OrganizationID = evt.OrganizationID
+	}
+	payload.Status = "success"
+	payload.Error = ""
+	if err := utils.ProduceVulnProcessed(*payload); err != nil {
+		log.Printf("[KAFKA][ERR] publish success failed: %v", err)
+	} else {
+		log.Printf("[KAFKA] Published vuln.processed for SBOM %s", payload.SBOMID)
+	}
+}
+
+func emitFailureEvent(evt SBOMEvent, failure error) {
+	payload := utils.VulnProcessedPayload{
+		SBOMID:         evt.SBOMID,
+		ProjectName:    evt.Project,
+		OrganizationID: evt.OrganizationID,
+		Components:     []map[string]interface{}{},
+		Timestamp:      time.Now().UTC(),
+		Status:         "failed",
+	}
+	if failure != nil {
+		payload.Error = failure.Error()
+	}
+	if err := utils.ProduceVulnProcessed(payload); err != nil {
+		log.Printf("[KAFKA][ERR] publish failure status failed: %v", err)
+	}
+}
+
+func publishDLQEvent(evt SBOMEvent, failure error, attempts int, category failureCategory) {
+	cfg := config.LoadConfig()
+	if strings.TrimSpace(cfg.DLQTopic) == "" {
+		return
+	}
+	writer, err := kafkautil.GetWriter(cfg.DLQTopic)
+	if err != nil {
+		log.Printf("[DLQ][ERR] writer unavailable: %v", err)
+		return
+	}
+
+	errorMsg := ""
+	if failure != nil {
+		errorMsg = failure.Error()
+	}
+	dedupSource := fmt.Sprintf("%s|%s|%s", evt.SBOMID, evt.Project, errorMsg)
+	dedupHash := sha256.Sum256([]byte(dedupSource))
+	dedupKey := hex.EncodeToString(dedupHash[:8])
+
+	payload := map[string]interface{}{
+		"sbom_id":         evt.SBOMID,
+		"project_name":    evt.Project,
+		"organization_id": evt.OrganizationID,
+		"error":           errorMsg,
+		"attempts":        attempts,
+		"failure_class":   string(category),
+		"dedup_key":       dedupKey,
+		"timestamp":       time.Now().UTC(),
+	}
+
+	env := events.NewEnvelope("sbom.processing_failed", evt.OrganizationID, evt.Project, payload)
+	body, _ := json.Marshal(env)
+	msg := kafka.Message{
+		Key:   []byte(evt.SBOMID),
+		Value: body,
+		Time:  time.Now().UTC(),
+	}
+
+	if err := writer.WriteMessages(context.Background(), msg); err != nil {
+		log.Printf("[DLQ][ERR] publish failed: %v", err)
+	}
+}
+
+func classifyFailure(err error) failureCategory {
+	if err == nil {
+		return failureTransient
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return failurePermanent
+	}
+	lower := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(lower, "empty sbom payload"),
+		strings.Contains(lower, "no valid components"),
+		strings.Contains(lower, "project not found"),
+		strings.Contains(lower, "cannot find orgid"),
+		strings.Contains(lower, "invalid sbom"):
+		return failurePermanent
+	default:
+		return failureTransient
+	}
 }
 
 func maybePublishCriticalAlert(ctx context.Context, dbConn *sql.DB, orgID int64, project string, vulns []map[string]interface{}) error {
