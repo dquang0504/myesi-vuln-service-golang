@@ -14,6 +14,7 @@ import (
 	"myesi-vuln-service-golang/internal/config"
 	"myesi-vuln-service-golang/internal/consumer"
 	"myesi-vuln-service-golang/internal/db"
+	kafkautil "myesi-vuln-service-golang/internal/kafka"
 	"myesi-vuln-service-golang/internal/redis"
 	"myesi-vuln-service-golang/internal/scheduler"
 	"myesi-vuln-service-golang/internal/services"
@@ -35,6 +36,7 @@ func main() {
 	redis.InitRedis()
 	defer db.CloseDB()
 	defer redis.CloseRedis()
+	defer kafkautil.CloseWriters()
 
 	//init kafka consumer
 	go func() {
@@ -45,6 +47,7 @@ func main() {
 	//init scheduler
 	go scheduler.StartDailyScheduler()
 	go scheduler.StartRepoCleanupScheduler()
+	go scheduler.StartSLABreachScheduler()
 
 	if err := consumer.InitMetrics(); err != nil {
 		log.Fatalf("failed to init metrics: %v", err)

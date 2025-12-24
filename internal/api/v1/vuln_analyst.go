@@ -35,6 +35,11 @@ func createAssignment(c *fiber.Ctx) error {
 		})
 	}
 
+	orgId, err := requireOrgID(c)
+	if err != nil {
+		return err
+	}
+
 	// Validate input
 	if req.VulnerabilityID == 0 || req.AssigneeID == 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -76,7 +81,7 @@ func createAssignment(c *fiber.Ctx) error {
         JOIN projects p ON p.id = s.project_id
         WHERE v.id = $1 AND p.organization_id = $2
         `,
-		req.VulnerabilityID,
+		req.VulnerabilityID, orgId,
 	).Scan(&tmp); err != nil {
 
 		if errors.Is(err, sql.ErrNoRows) {
@@ -959,8 +964,8 @@ func createCodeFindingAssignment(c *fiber.Ctx) error {
         FROM code_findings cf
         JOIN projects p ON p.id = cf.project_id
         WHERE cf.id = $1 AND p.organization_id = $2
-        `, orgID,
-		req.CodeFindingID,
+        `, req.CodeFindingID,
+		orgID,
 	).Scan(&tmp, &projectName); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return c.Status(404).JSON(fiber.Map{"error": "code finding not found"})
