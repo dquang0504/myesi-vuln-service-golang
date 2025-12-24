@@ -5,14 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"myesi-vuln-service-golang/internal/config"
-	"strings"
+	"myesi-vuln-service-golang/internal/events"
+	kafkautil "myesi-vuln-service-golang/internal/kafka"
 	"time"
 
 	"github.com/segmentio/kafka-go"
 )
-
-const notificationTopic = "notification-events"
 
 // AssignmentNotificationPayload describes a notification for analyst → developer assignment.
 type AssignmentNotificationPayload struct {
@@ -41,29 +39,31 @@ type SBOMSummaryPayload struct {
 	OccurredAt     time.Time              `json:"occurred_at"`
 }
 
-func getWriter() kafka.Writer {
-	cfg := config.LoadConfig()
-	return kafka.Writer{
-		Addr:         kafka.TCP(strings.Split(cfg.KafkaBroker, ",")...),
-		Topic:        notificationTopic,
-		Balancer:     &kafka.LeastBytes{},
-		RequiredAcks: kafka.RequireAll,
-	}
+func notificationWriter() (*kafka.Writer, error) {
+	return kafkautil.GetWriter(kafkautil.TopicNotificationEvents)
 }
 
 // PublishAssignmentNotification sends an event to the notification bus.
 func PublishAssignmentNotification(evt AssignmentNotificationPayload) error {
-	data, err := json.Marshal(evt)
+	writer, err := notificationWriter()
 	if err != nil {
 		return err
 	}
 
-	writer := getWriter()
-	defer writer.Close()
+	data := map[string]interface{}{
+		"user_id":  evt.UserID,
+		"severity": evt.Severity,
+		"payload":  evt.Payload,
+	}
+	env := events.NewEnvelope(evt.Type, evt.OrganizationID, fmt.Sprintf("%v", evt.Payload["project"]), data)
+	body, err := json.Marshal(env)
+	if err != nil {
+		return err
+	}
 
 	msg := kafka.Message{
 		Key:   []byte(fmt.Sprintf("user-%d", evt.UserID)),
-		Value: data,
+		Value: body,
 		Time:  time.Now().UTC(),
 	}
 
@@ -72,6 +72,11 @@ func PublishAssignmentNotification(evt AssignmentNotificationPayload) error {
 
 // PublishScanSummary notifies developers about completed scans with counts.
 func PublishScanSummary(orgID int64, project string, vulns int, codeFindings int) {
+	writer, err := notificationWriter()
+	if err != nil {
+		log.Printf("[NOTIFY] writer unavailable: %v", err)
+		return
+	}
 	payload := map[string]interface{}{
 		"project":       project,
 		"vulns":         vulns,
@@ -80,26 +85,21 @@ func PublishScanSummary(orgID int64, project string, vulns int, codeFindings int
 		"target_role":   "developer",
 	}
 
-	evt := ScanSummaryPayload{
-		Type:           "project.scan.summary",
-		OrganizationID: orgID,
-		Severity:       "info",
-		Payload:        payload,
-		OccurredAt:     time.Now().UTC(),
+	data := map[string]interface{}{
+		"severity": "info",
+		"payload":  payload,
 	}
+	env := events.NewEnvelope("project.scan.summary", orgID, project, data)
 
-	data, err := json.Marshal(evt)
+	body, err := json.Marshal(env)
 	if err != nil {
 		log.Printf("[NOTIFY] marshal scan summary failed: %v", err)
 		return
 	}
 
-	writer := getWriter()
-	defer writer.Close()
-
 	msg := kafka.Message{
 		Key:   []byte(fmt.Sprintf("org-%d", orgID)),
-		Value: data,
+		Value: body,
 		Time:  time.Now().UTC(),
 	}
 
@@ -110,6 +110,11 @@ func PublishScanSummary(orgID int64, project string, vulns int, codeFindings int
 
 // PublishSBOMSummary notifies about SBOM scan results (manual or auto).
 func PublishSBOMSummary(orgID int64, project string, components int, vulns int) {
+	writer, err := notificationWriter()
+	if err != nil {
+		log.Printf("[NOTIFY] writer unavailable: %v", err)
+		return
+	}
 	payload := map[string]interface{}{
 		"project":     project,
 		"components":  components,
@@ -118,26 +123,21 @@ func PublishSBOMSummary(orgID int64, project string, components int, vulns int) 
 		"target_role": "developer",
 	}
 
-	evt := SBOMSummaryPayload{
-		Type:           "sbom.scan.summary",
-		OrganizationID: orgID,
-		Severity:       "info",
-		Payload:        payload,
-		OccurredAt:     time.Now().UTC(),
+	data := map[string]interface{}{
+		"severity": "info",
+		"payload":  payload,
 	}
+	env := events.NewEnvelope("sbom.scan.summary", orgID, project, data)
 
-	data, err := json.Marshal(evt)
+	body, err := json.Marshal(env)
 	if err != nil {
 		log.Printf("[NOTIFY] marshal sbom summary failed: %v", err)
 		return
 	}
 
-	writer := getWriter()
-	defer writer.Close()
-
 	msg := kafka.Message{
 		Key:   []byte(fmt.Sprintf("org-%d", orgID)),
-		Value: data,
+		Value: body,
 		Time:  time.Now().UTC(),
 	}
 
@@ -152,6 +152,12 @@ func PublishCriticalVulnAlert(orgID int64, project string, samples []map[string]
 		return
 	}
 
+	writer, err := notificationWriter()
+	if err != nil {
+		log.Printf("[NOTIFY] writer unavailable: %v", err)
+		return
+	}
+
 	payload := map[string]interface{}{
 		"project":        project,
 		"critical_count": len(samples),
@@ -160,29 +166,24 @@ func PublishCriticalVulnAlert(orgID int64, project string, samples []map[string]
 		"target_role":    "developer",
 	}
 
-	event := map[string]interface{}{
-		"type":            "vulnerability.critical",
-		"organization_id": orgID,
-		"severity":        "critical",
-		"payload":         payload,
-		"occurred_at":     time.Now().UTC(),
+	data := map[string]interface{}{
+		"severity": "critical",
+		"payload":  payload,
 	}
 	if len(targetEmails) > 0 {
-		event["emails"] = targetEmails
+		data["emails"] = targetEmails
 	}
 
-	data, err := json.Marshal(event)
+	env := events.NewEnvelope("vulnerability.critical", orgID, project, data)
+	body, err := json.Marshal(env)
 	if err != nil {
 		log.Printf("[NOTIFY] marshal critical vuln alert failed: %v", err)
 		return
 	}
 
-	writer := getWriter()
-	defer writer.Close()
-
 	msg := kafka.Message{
 		Key:   []byte(fmt.Sprintf("org-%d-critical", orgID)),
-		Value: data,
+		Value: body,
 		Time:  time.Now().UTC(),
 	}
 

@@ -9,6 +9,8 @@ import (
 	"math"
 	"myesi-vuln-service-golang/internal/config"
 	"myesi-vuln-service-golang/internal/db"
+	"myesi-vuln-service-golang/internal/events"
+	kafkautil "myesi-vuln-service-golang/internal/kafka"
 	"myesi-vuln-service-golang/internal/services"
 	"myesi-vuln-service-golang/utils"
 	"os"
@@ -20,7 +22,6 @@ import (
 	kafka "github.com/segmentio/kafka-go"
 )
 
-// Đăng ký các route thuần "vulnerabilities"
 func RegisterVulnRoutes(r fiber.Router) {
 	r.Get("/health", HealthCheck)
 	r.Post("/refresh", refreshVuln)
@@ -103,6 +104,8 @@ func refreshVuln(c *fiber.Ctx) error {
 		return err
 	}
 
+	projectID := 0
+
 	if req.SBOMID != "" {
 		projectName, err := ensureSBOMAccessible(c.Context(), req.SBOMID, orgID)
 		if err != nil {
@@ -117,27 +120,35 @@ func refreshVuln(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "project_name required when providing components"})
 	}
 	if req.Project != "" {
-		if _, err := ensureProjectAccessible(c.Context(), req.Project, orgID); err != nil {
+		if pid, err := ensureProjectAccessible(c.Context(), req.Project, orgID); err != nil {
 			return err
+		} else {
+			projectID = pid
 		}
 	}
 
 	//If components present, publish event with them. Otherwise publish event referencing sbom_id only
-	w := kafka.Writer{
-		Addr:  kafka.TCP(strings.Split(config.LoadConfig().KafkaBroker, ",")...),
-		Topic: config.LoadConfig().KafkaTopic,
+	cfg := config.LoadConfig()
+	writer, err := kafkautil.GetWriter(cfg.KafkaTopic)
+	if err != nil {
+		log.Println("kafka writer unavailable: ", err)
+		return c.Status(500).JSON(fiber.Map{"error": "kafka unavailable"})
 	}
-	defer w.Close()
 
-	event := map[string]interface{}{
-		"sbom_id":         req.SBOMID,
-		"project":         req.Project,
-		"organization_id": orgID,
+	event := struct {
+		SBOMID     string              `json:"sbom_id,omitempty"`
+		ProjectID  int                 `json:"project_id,omitempty"`
+		Project    string              `json:"project_name,omitempty"`
+		Components []map[string]string `json:"components,omitempty"`
+	}{
+		SBOMID:     req.SBOMID,
+		ProjectID:  projectID,
+		Project:    req.Project,
+		Components: req.Components,
 	}
-	if len(req.Components) > 0 {
-		event["components"] = req.Components
-	}
-	data, _ := json.Marshal(event)
+
+	payload := events.NewEnvelope("vuln.refresh.requested", int64(orgID), req.Project, event)
+	data, _ := json.Marshal(payload)
 	key := req.SBOMID
 	if key == "" {
 		key = req.Project
@@ -146,7 +157,7 @@ func refreshVuln(c *fiber.Ctx) error {
 		Key:   []byte(key),
 		Value: data,
 	}
-	if err := w.WriteMessages(c.Context(), msg); err != nil {
+	if err := writer.WriteMessages(c.Context(), msg); err != nil {
 		log.Println("publish refresh error: ", err)
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -334,37 +345,53 @@ func ListVulnerabilities(c *fiber.Ctx) error {
 			}
 
 			vQuery := `
+        WITH latest_vulns AS (
+            SELECT
+                v.*,
+                ROW_NUMBER() OVER (
+                    PARTITION BY
+                        v.project_id,
+                        COALESCE(v.vuln_id, ''),
+                        v.component_name,
+                        v.component_version
+                    ORDER BY
+                        COALESCE(v.updated_at, v.created_at) DESC,
+                        v.id DESC
+                ) AS rn
+            FROM vulnerabilities v
+            WHERE v.is_active = TRUE
+              AND v.project_id IN (` + strings.Join(placeholders, ",") + `)
+        )
         SELECT 
-            v.id,
-            v.sbom_id,
-            v.project_name,
-            v.component_name,
-            v.component_version,
-            v.vuln_id,
-            v.severity,
-            v.cvss_vector,
-            v.osv_metadata,
-            v.fix_available,
-            v.fixed_version,
-            v.updated_at,
+            lv.id,
+            lv.sbom_id,
+            lv.project_name,
+            lv.component_name,
+            lv.component_version,
+            lv.vuln_id,
+            lv.severity,
+            lv.cvss_vector,
+            lv.osv_metadata,
+            lv.fix_available,
+            lv.fixed_version,
+            lv.updated_at,
             COALESCE(r.score, 0)
-        FROM vulnerabilities v
+        FROM latest_vulns lv
         JOIN projects p
-          ON p.id = v.project_id
+          ON p.id = lv.project_id
         LEFT JOIN sboms s
-          ON s.id = v.sbom_id
+          ON s.id = lv.sbom_id
         LEFT JOIN risk_scores r
-          ON v.sbom_id = r.sbom_id
-         AND v.component_name = r.component_name
-         AND v.component_version = r.component_version
-        WHERE v.is_active = TRUE
+          ON lv.sbom_id = r.sbom_id
+         AND lv.component_name = r.component_name
+         AND lv.component_version = r.component_version
+        WHERE lv.rn = 1
           AND p.organization_id = $1
-          AND p.id IN (` + strings.Join(placeholders, ",") + `)
     `
 
 			// severity filter
 			if severity != "" && severity != "all" {
-				vQuery += " AND LOWER(v.severity) = LOWER($" + strconv.Itoa(len(argsV)+1) + ")"
+				vQuery += " AND LOWER(lv.severity) = LOWER($" + strconv.Itoa(len(argsV)+1) + ")"
 				argsV = append(argsV, severity)
 			}
 
@@ -374,7 +401,7 @@ func ListVulnerabilities(c *fiber.Ctx) error {
 				vQuery += `
             AND (
                 LOWER(s.source) = LOWER($` + strconv.Itoa(idx) + `)
-                OR LOWER(v.osv_metadata->>'source') = LOWER($` + strconv.Itoa(idx) + `)
+                OR LOWER(lv.osv_metadata->>'source') = LOWER($` + strconv.Itoa(idx) + `)
             )
         `
 				argsV = append(argsV, source)
@@ -561,15 +588,50 @@ func scanCode(c *fiber.Ctx) error {
 		)
 	}
 
+	// 2b) Enforce per-minute scan rate limit from subscription plan
+	var rateAllowed bool
+	var retryAfter sql.NullTime
+	var remaining sql.NullInt64
+	rateRow := db.Conn.QueryRowContext(
+		c.Context(),
+		"SELECT allowed, retry_after, remaining FROM check_and_consume_scan_rate($1,$2)",
+		orgID, 1,
+	)
+	if err := rateRow.Scan(&rateAllowed, &retryAfter, &remaining); err != nil {
+		revertUsage()
+		return c.Status(500).JSON(fiber.Map{"error": "scan rate check failed: " + err.Error()})
+	}
+
+	revertRate := func() {
+		db.Conn.ExecContext(
+			c.Context(),
+			"SELECT revert_scan_rate($1,$2)",
+			orgID, 1,
+		)
+	}
+
+	if !rateAllowed {
+		revertUsage()
+		nextWindow := "later"
+		if retryAfter.Valid {
+			nextWindow = retryAfter.Time.Format(time.RFC3339)
+		}
+		return c.Status(429).JSON(fiber.Map{
+			"error": fmt.Sprintf("Scan rate limit reached. Try again after %s", nextWindow),
+		})
+	}
+
 	// 3) Optional legacy Redis running-limit
 	running, err := utils.GetRunningCount(orgID, context.Background())
 	if err != nil {
 		revertUsage()
+		revertRate()
 		return c.Status(500).JSON(fiber.Map{"error": "cannot check running scans"})
 	}
 
 	if running >= 5 {
 		revertUsage()
+		revertRate()
 		return c.Status(429).JSON(fiber.Map{
 			"error": "Too many scans running at the moment. Try again shortly.",
 		})
@@ -606,6 +668,10 @@ func scanCode(c *fiber.Ctx) error {
 			db.Conn.ExecContext(context.Background(),
 				"SELECT revert_usage($1,$2,$3)",
 				orgID, "project_scan", 1,
+			)
+			db.Conn.ExecContext(context.Background(),
+				"SELECT revert_scan_rate($1,$2)",
+				orgID, 1,
 			)
 		}
 	}()
